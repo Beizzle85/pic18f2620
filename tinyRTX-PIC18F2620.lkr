@@ -1,5 +1,3 @@
-//SECTION     NAME=STARTUP    ROM=vectors
-//SECTION     NAME=PROG1      ROM=page
 // Linker command file for 18F2620
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +28,7 @@
 //  13Aug14  SHiggins@tinyRTX.com  	Converted from PIC16F877 to PIC18F452.
 //	03Sep14  SHiggins@tinyRTX.com	Removed SUSR_UdataSec (was unused).
 //	14Apr15  Stephen_Higgins@KairosAutonomi.com	Converted from PIC18F452 to PIC18F2620.
+//	16Apr15  Stephen_Higgins@KairosAutonomi.com	Added SSIO code and data.
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -118,9 +117,9 @@ SECTION    NAME=SISD_IntVectorSec   ROM=p0_sisd_int_hi_pri  // Interrupt vector 
 SECTION    NAME=SISD_IntCodeSec     ROM=p0_srtx_general  	// Interrupt handler.
 SECTION    NAME=SISD_CodeSec        ROM=p0_srtx_general     // System Interrupt Service Director.
 SECTION    NAME=SRTX_CodeSec        ROM=p0_srtx_general     // System Real Time eXecutive.
-//SECTION    NAME=SLCD_CodeSec        ROM=p0_srtx_general     // System LCD services.
 SECTION    NAME=SI2C_CodeSec        ROM=p0_srtx_general     // System I2C services.     LINKNOTE: Place on same page as SI2C_TableSec.
 SECTION    NAME=SI2C_TableSec       ROM=p0_srtx_tables      // System I2C lookup table.
+SECTION    NAME=SSIO_CodeSec        ROM=p0_srtx_general     // System Serial I/O services.
 SECTION    NAME=SUSR_CodeSec        ROM=p0_srtx_general     // SRTX - User interface.
 SECTION    NAME=STRC_CodeSec        ROM=p0_srtx_general     // System Trace service.
 //
@@ -131,6 +130,7 @@ SECTION    NAME=ULCD_TableSec       ROM=p1_user_tables      // User LCD lookup t
 SECTION    NAME=UI2C_TableSec       ROM=p1_user_tables      // User I2C lookup tables.
 SECTION    NAME=ULCD_CodeSec        ROM=p1_user_general     // User LCD routines.      LINKNOTE: Place on same page as ULCD_TableSec.
 SECTION    NAME=UI2C_CodeSec        ROM=p1_user_general     // User I2C routines.      LINKNOTE: Place on same page as UI2C_TableSec.
+SECTION    NAME=USIO_CodeSec        ROM=p1_user_general     // User Serial I/O routines. 
 SECTION    NAME=UADC_CodeSec        ROM=p1_user_general     // User ADC routines.
 SECTION    NAME=UAPP_CodeSec        ROM=p1_user_general     // Main user application.
 SECTION    NAME=SM16_CodeSec        ROM=p2_user_general     // Math routines.
@@ -148,9 +148,10 @@ SECTION    NAME=SISD_UdataAcsSec    RAM=accessram   // SISD context save.
 // SRTX and supporting variables go at beginning of bank 0.
 //
 SECTION    NAME=SRTX_UdataSec       RAM=gpr0        // SRTX services. LINKNOTE: SRTX_UdataSec always in Bank 0.(?)
-SECTION    NAME=SLCD_UdataSec       RAM=gpr0        // System LCD services.           
+SECTION    NAME=SLCD_UdataSec       RAM=gpr0        // System LCD services. (May be used for serial msgs out.)          
 SECTION    NAME=SI2C_UdataSec       RAM=gpr0        // System I2C services.           
 SECTION    NAME=STRC_UdataSec       RAM=gpr3        // System Trace services.           
+SECTION    NAME=SSIO_UdataSec       RAM=gpr4        // System Serial I/O services.           
 //
 // User application variables may use end of bank 0 and everywhere else.
 //
@@ -158,6 +159,7 @@ SECTION    NAME=UAPP_UdataSec       RAM=gpr1        // User application variable
 SECTION    NAME=UADC_UdataSec       RAM=gpr1        // User ADC routines.
 SECTION    NAME=ULCD_UdataSec       RAM=gpr1        // User LCD routines.
 SECTION    NAME=UI2C_UdataSec       RAM=gpr1        // User I2C routines.
+SECTION    NAME=USIO_UdataSec       RAM=gpr1        // User Serial I/O routines.
 SECTION    NAME=SM16_UdataSec       RAM=gpr2        // Fixed/Floating point library.
 //
 ////////////////////////////////////////////////////////////////////////////////

@@ -126,33 +126,33 @@ UAPP_POR_Init
         movlw   0xff
         movwf   TRISC       ; Set all bits as discrete inputs.
 ;
-; PIE1 changed: ADIE, SSPIE, CCP1IE, TMR2IE, TMR1IE disabled.
+; PIE1 changed: ADIE, RCIE, TXIE, SSPIE, CCP1IE, TMR2IE, TMR1IE disabled.
 ;
         banksel PIE1
-        movlw   (0<<ADIE)|(0<<SSPIE)|(0<<CCP1IE)|(0<<TMR2IE)|(0<<TMR1IE)
+        movlw   (0<<ADIE)|(0<<RCIE)|(0<<TXIE)|(0<<SSPIE)|(0<<CCP1IE)|(0<<TMR2IE)|(0<<TMR1IE)
         movwf   PIE1
 ;
-; PIR1 changed: ADIF, SSPIF, CCP1IF, TMR2IF, TMR1IF cleared.
+; PIR1 changed: ADIF, RCIF, TXIF, SSPIF, CCP1IF, TMR2IF, TMR1IF cleared.
 ;
         banksel PIR1
-        movlw   (0<<ADIF)|(0<<SSPIF)|(0<<CCP1IF)|(0<<TMR2IF)|(0<<TMR1IF)
+        movlw   (0<<ADIF)|(0<<RCIF)|(0<<TXIF)|(0<<SSPIF)|(0<<CCP1IF)|(0<<TMR2IF)|(0<<TMR1IF)
         movwf   PIR1
 ;
 ; PIE2 untouched; EEIE, BCLIE disabled.
 ; PIR2 untouched; EEIR, BCLIF remain cleared.
+;
+; IPEN cleared so disable priority levels on interrupts (PIC16 compatiblity mode.)
+; RI set; TO set; PD set; POR set; BOR set; subsequent hardware resets will clear these bits.
+;
+        banksel RCON
+        movlw   (0<<IPEN)|(1<<NOT_RI)|(1<<NOT_TO)|(1<<NOT_PD)|(1<<NOT_POR)|(1<<NOT_BOR)        
+        movwf   RCON
 ;
 ; INTCON changed: GIE, PEIE enabled; TMR0IE, INT0IE, RBIE disabled; TMR0IF, INT0IF, RBIF cleared.
 ;
         banksel INTCON
         movlw   (1<<GIE)|(1<<PEIE)|(0<<TMR0IE)|(0<<INT0IE)|(0<<RBIE)|(0<<TMR0IF)|(0<<INT0IF)|(0<<RBIF)
         movwf   INTCON
-;
-; IPEN cleared so disable priority levels on interrupts (PIC16 compatiblity mode.)
-; RI set; TO set; PD set; POR set; BOR set; subsequent hardware resets will clear these bits.
-;
-        movlw   (0<<IPEN)|(1<<NOT_RI)|(1<<NOT_TO)|(1<<NOT_PD)|(1<<NOT_POR)|(1<<NOT_BOR)        
-        banksel RCON
-        movwf   RCON
         return
 ;
         end

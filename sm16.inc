@@ -52,3 +52,5 @@
         EXTERN  TEMP
 ;
         EXTERN  SM16_16x16u
+;
+        LIST

@@ -32,8 +32,10 @@
 ;									both the trace buffer and RAM.  Unresolved.
 ;  03Sep14  SHiggins@tinyRTX.com	Rename SUSR_TaskI2C to SUSR_ISR_I2C, remove SUSR_UdataSec.
 ;                                   New SUSR_TaskI2C now invokes UI2C_MsgTC74ProcessData.
-;  14Apr15  Stephen_Higgins@KairosAutonomi.com	Converted from PIC18F452 to PIC18F2620.
-;                                               Removed slcd.inc, SLCD_Init, SLCD_RefreshLine1, SLCD_RefreshLine2.
+;  14Apr15  Stephen_Higgins@KairosAutonomi.com
+;                                   Converted from PIC18F452 to PIC18F2620.
+;  17Apr15  Stephen_Higgins@KairosAutonomi.com
+;                                   Added usio.inc, SSIO_Init.
 ;
 ;*******************************************************************************
 ;
@@ -46,6 +48,7 @@
         #include <ulcd.inc>
         #include <uadc.inc>
         #include <ui2c.inc>
+        #include <usio.inc>
 ;
 ;*******************************************************************************
 ;
@@ -69,14 +72,14 @@ SUSR_POR_PhaseA
 ;
         GLOBAL  SUSR_POR_PhaseB
 SUSR_POR_PhaseB
-        call    UAPP_POR_Init           ; User app POR Init. (Enables global interrupts.)
+        call    UAPP_POR_Init           ; User app POR Init. (Enables global and peripheral ints.)
 ;
-;  UAPP_POR_Init enabled global interrupts.
+;  UAPP_POR_Init enabled global interrupts. These may enable additional specific interrupts.
 ;
         call    UADC_Init               ; User ADC hardware init.
-;        call    SLCD_Init               ; System LCD init.
         call    ULCD_Init               ; User LCD init.
         call    UI2C_Init               ; User I2C hardware init.
+        call    USIO_Init               ; User Serial I/O hardware init.
         return
 ;
 ; User initialization of timebase timer and corresponding interrupt.
@@ -98,6 +101,10 @@ SUSR_Task1
         movlw   0x01
         xorwf   PORTB, F                ; Toggle LED 1.
         call    UADC_Trigger            ; Initiate new A/D conversion. (Enables ADC interrupt.)
+
+        #include <ssio.inc>
+        movlw   "A"
+        call    SSIO_PutByteTxBuffer
 ;
 ; UADC_Trigger enabled ADC interrupts.
 ;
@@ -142,6 +149,11 @@ SUSR_TaskADC
 ;
 ; User handling when I2C event interrupt occurs.
 ;
+; Maybe this is an unnecessary level of indirection, and SISD could call SI2C_Tbl_HwState directly.
+; Currently SISD calls SSIO_GetByteFromRxHW and SSIO_PutByteIntoTxHW directly when those interrupts
+; occur, and then those ISR's will schedule SUSR_TaskSIO user task when a complete message is received.
+; In the same way SI2C_Tbl_HwStaten will GOTO SUSR_TaskI2C_MsgDone which will GOTO UI2C_MsgDone.
+;
         GLOBAL  SUSR_ISR_I2C
 SUSR_ISR_I2C
 ;;        smTraceL STRC_ISR_BEG_I2C     ; Calls to smTrace during ints currently not supported.
@@ -156,6 +168,15 @@ SUSR_TaskI2C
         smTraceL STRC_TSK_BEG_I2C
         call    UI2C_MsgTC74ProcessData	; Process data from TC74 message.
         smTraceL STRC_TSK_END_I2C
+        return
+;
+; User interface to TaskSIO.
+;
+        GLOBAL  SUSR_TaskSIO
+SUSR_TaskSIO
+;        smTraceL STRC_TSK_BEG_SIO
+;        call    USIO_MsgReceived        ; Process data from SIO message.
+;        smTraceL STRC_TSK_END_SIO
         return
 ;
 ; User handling when I2C message completed.

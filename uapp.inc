@@ -27,7 +27,6 @@
 ;
         EXTERN      UAPP_POR_Init
 ;
-        LIST
 ;*******************************************************************************
 ;
 UAPP_Timer1Init MACRO
@@ -58,3 +57,4 @@ UAPP_Timer1Init MACRO
 		bsf		T1CON,TMR1ON            ; Turn on Timer1 module.
         ENDM
 ;
+        LIST

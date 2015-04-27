@@ -30,3 +30,4 @@
 ;
 ; UADC data structures.
 ;
+        LIST

@@ -27,6 +27,9 @@
 ;   								Remove AD_COMPLETE_TASK and I2C_COMPLETE_TASK options.
 ;									Both now have some interrupt handling and a task.
 ;	03Sep14 SHiggins@tinyRTX.com    SISD_Director_CheckI2C now calls SUSR_ISR_I2C.
+;   16Apr15 Stephen_Higgins@KairosAutonomi.com  
+;                                   Added SIO interrupt handling.
+;                                   Dispense with saving W, STATUS, BSR registers.
 ;
 ;*******************************************************************************
 ;
@@ -36,6 +39,7 @@
 	    #include    <srtxuser.inc>
         #include 	<strc.inc>
 	    #include    <susr.inc>
+	    #include    <ssio.inc>
 ;
 ;*******************************************************************************
 ;
@@ -73,9 +77,17 @@ SISD_InterruptEntry
 ;
 SISD_IntCodeSec     CODE            ; Interrupt handler, too big to fit at vector address.
 SISD_Interrupt
-        movwf   SISD_TempW          	; Access RAM; preserve W without changing STATUS.
-		movff	STATUS, SISD_TempSTATUS	; Access RAM; preserve STATUS.
-		movff	BSR, SISD_TempBSR		; Access RAM; preserve BSR.
+;;;
+;;;     These registers only need to be saved for low priority interrupts, as PIC18
+;;;     high-priority interrupts or non-prioritized interrupts automatically save
+;;;     W, STATUS, and BSR.  There's only one level of execution that can be saved.
+;;;
+;;;     movwf   SISD_TempW          	; Access RAM; preserve W without changing STATUS.
+;;;	    movff	BSR, SISD_TempBSR		; Access RAM; preserve BSR.
+;;;     movff	STATUS, SISD_TempSTATUS	; Access RAM; preserve STATUS.
+;
+;   These registers may be used in the ISR's, if possible move these saves to any ISR that may need it.
+;
 		movff	PCLATH, SISD_TempPCLATH	; Access RAM; preserve PCLATH.
 		movff	PCLATU, SISD_TempPCLATU	; Access RAM; preserve PCLATU.
 		movff	FSR0L, SISD_TempFSR0L	; Access RAM; preserve FSR0L.
@@ -84,25 +96,33 @@ SISD_Interrupt
 ; Now we can use the internal registers (W, STATUS, PCLATH and FSR).
 ; GOTO is used here to save stack space, and SISD_Director never called elsewhere.
 ;
-        bra     SISD_Director       ; Service interrupt director.
+        bra     SISD_Director           ; Service interrupt director.
 ;
 ; SISD_Director does a GOTO here when it completes.
 ;
 SISD_InterruptExit
 ;
-; Now we restore the internal registers (W, STATUS, PCLATH and FSR), taking special care not to disturb
-; any of them.
+;   These registers may be used in the ISR's, if possible move these saves to any ISR that may need it.
 ;
 		movff	SISD_TempFSR0H, FSR0H 	; Access RAM; restore FSR0H.
 		movff	SISD_TempFSR0L, FSR0L 	; Access RAM; restore FSR0L.
 		movff	SISD_TempPCLATU, PCLATU	; Access RAM; restore PCLATU.
 		movff	SISD_TempPCLATH, PCLATH	; Access RAM; restore PCLATH.
-		movff	SISD_TempBSR, BSR		; Access RAM; restore BSR.
-		movff	SISD_TempSTATUS, STATUS	; Access RAM; restore STATUS.
-        swapf   SISD_TempW, F       	; Access RAM; restore W without changing STATUS.
-        swapf   SISD_TempW, W
+;;;
+;;; Now we restore the internal registers (W, STATUS, PCLATH and FSR), taking special care not to disturb
+;;; any of them.
+;;;
+;;;     These registers only need to be restored for low priority interrupts, as PIC18
+;;;     high-priority interrupts or non-prioritized interrupts automatically save
+;;;     W, STATUS, and BSR.  There's only one level of context that can be saved.
+;;;
+;;;		movff	SISD_TempBSR, BSR		; Access RAM; restore BSR.
+;;;     movf    SISD_TempW, W           ; Access RAM; restore W.
+;;;		movff	SISD_TempSTATUS, STATUS	; Access RAM; restore STATUS.
 ;
-       	retfie                      	; Return from interrupt exception. (Return plus GIE.)
+       	retfie  FAST                   	; Return from interrupt exception.
+                                        ;  Restores single level of BSR, W, and STATUS,
+                                        ; perform Return plus enables GIE.
 ;
 ;*******************************************************************************
 ;
@@ -126,7 +146,6 @@ SISD_Director
 ;
 ; Test for Timer1 rollover.
 ;
-        banksel PIR1
         btfss   PIR1, TMR1IF            ; Skip if Timer1 interrupt flag set.
         bra     SISD_Director_CheckADC  ; Timer1 int flag not set, check other ints.
         bcf     PIR1, TMR1IF            ; Clear Timer1 interrupt flag.
@@ -151,13 +170,37 @@ SISD_Director_CheckADC
 ; Test for completion of I2C event.
 ;
 SISD_Director_CheckI2C
-        btfss   PIR1, SSPIF             ; Skip if I2C interrupt flag set.
-        bra     SISD_Director_Exit      ; I2C int flag not set, check other ints.
-        bcf     PIR1, SSPIF             ; Clear I2C interrupt flag.
-        call    SUSR_ISR_I2C            ; User ISR handling when I2C event.
+        btfss   PIR1, SSPIF                 ; Skip if I2C interrupt flag set.
+        bra     SISD_Director_CheckSIO_Rx   ; I2C int flag not set, check other ints.
+        bcf     PIR1, SSPIF                 ; Clear I2C interrupt flag.
+        call    SUSR_ISR_I2C                ; User ISR handling when I2C event.
+        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
+;
+; Test for completion of SIO receive event.
+;
+SISD_Director_CheckSIO_Rx
+        btfss   PIR1, RCIF                  ; Skip if RCIF (receive int) flag set.
+        bra     SISD_Director_CheckSIO_Tx   ; RCIF int flag not set, check other ints.
+        btfsc	PIE1,RCIE                   ; Skip if RCIE (receive int) not enabled.
+        call    SSIO_GetByteFromRxHW        ; RCIF and RCIE both set, System ISR handling when SIO_Rx event.
+        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
+;
+; Test for completion of SIO transmit event.
+;
+SISD_Director_CheckSIO_Tx
+        btfss   PIR1, TXIF              ; Skip if TXIF (transmit int) flag set.
+        bra     SISD_Unknown_Int        ; TXIF int flag not set, check other ints.
+		btfsc	PIE1, TXIE	            ; Skip if TXIE clear (transmit int) not enabled.
+		call	SSIO_PutByteIntoTxHW    ; TXIF and TXIE both set, System ISR handling when SIO_Tx event.
         bra     SISD_Director_Exit      ; Only execute single interrupt handler.
 ;
 ; This point only reached if unknown interrupt occurs, any error handling can go here.
+;
+SISD_Unknown_Int
+        nop                             ; Place breakpoint here to find unknown interrupts.
+        nop
+;
+; Currently we don't do anything if we get an unknown interrupt, just fall through to exit.
 ;
 SISD_Director_Exit
         bra     SISD_InterruptExit      ; Return to SISD interrupt handler.

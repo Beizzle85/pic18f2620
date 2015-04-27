@@ -24,6 +24,7 @@
 ;   12Aug14  SHiggins@tinyRTX.com Converted from PIC16877 to PIC18F452.
 ;   15Aug14  SHiggins@tinyRTX.com Converted PIC16 jump table to SRTX_ComputedBraRCall.
 ;   18Aug14  SHiggins@tinyRTX.com Corrections due to testing.
+;   16Apr15  Stephen_Higgins@KairosAutonomi.com Removed #include <strc.inc>.
 ;
 ;*******************************************************************************
 ;
@@ -32,7 +33,6 @@
 	    #include    <srtx.inc>
 	    #include    <si2cuser.inc>
 	    #include    <susr.inc>
-	    #include    <strc.inc>
 ;
 		LIST
 ;*******************************************************************************

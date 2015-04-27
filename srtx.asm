@@ -25,6 +25,8 @@
 ;   15Aug14 SHiggins@tinyRTX.com    Added SRTX_ComputedBraRCall and SRTX_ComputedGotoCall.
 ;   02Sep14  SHiggins@tinyRTX.com  	Remove AD_COMPLETE_TASK and I2C_COMPLETE_TASK options.
 ;									Both now have some interrupt handling and a task.
+;   17Apr15  Stephen_Higgins@KairosAutonomi.com
+;                                   Added SRTX_Sched_Cnt_TaskSIO, SRTX_Dispatcher_CheckSIO.
 ;
 ;*******************************************************************************
 ;
@@ -59,6 +61,8 @@ SRTX_Sched_Cnt_Task3    res     1
 SRTX_Sched_Cnt_TaskADC  res     1	; Needs to be GLOBAL because other routines can schedule.
     GLOBAL  SRTX_Sched_Cnt_TaskI2C
 SRTX_Sched_Cnt_TaskI2C  res     1	; Needs to be GLOBAL because other routines can schedule.
+    GLOBAL  SRTX_Sched_Cnt_TaskSIO
+SRTX_Sched_Cnt_TaskSIO  res     1	; Needs to be GLOBAL because other routines can schedule.
 ;
 ; Temp variable for SRTX_ComputedBraRCall and SRTX_ComputedGotoCall, because rotates
 ;  can only be done through a memory location.
@@ -115,6 +119,7 @@ SRTX_Init
         clrf    SRTX_Sched_Cnt_Task3
         clrf    SRTX_Sched_Cnt_TaskADC
         clrf    SRTX_Sched_Cnt_TaskI2C
+        clrf    SRTX_Sched_Cnt_TaskSIO
 ;
         rcall   SRTX_Scheduler          ; Schedule all timebase tasks.
         call    SUSR_POR_PhaseB         ; Application non-time critical init.
@@ -176,10 +181,11 @@ SRTX_Scheduler_Exit
 ;
 ; Priority (1 = highest):
 ;	1: I2C
-;	2: ADC
-;	3: Task1
-;	4: Task2
-;	5: Task3
+;	2: SIO
+;	3: ADC
+;	4: Task1
+;	5: Task2
+;	6: Task3
 ;
 ;*******************************************************************************
 ;
@@ -189,10 +195,23 @@ SRTX_Dispatcher
 		banksel	SRTX_Sched_Cnt_TaskI2C
         addwf   SRTX_Sched_Cnt_TaskI2C, W   ; Check if non-zero schedule count.
         btfsc   STATUS, Z                   ; Skip if task scheduled.
-        bra     SRTX_Dispatcher_CheckADC    ; Task not scheduled, check next task.
+        bra     SRTX_Dispatcher_CheckSIO    ; Task not scheduled, check next task.
         call    SUSR_TaskI2C                ; Invoke task.
 		banksel	SRTX_Sched_Cnt_TaskI2C
         decfsz  SRTX_Sched_Cnt_TaskI2C, F   ; Dec schedule count, this invocation done.
+        nop                                 ; Trap, task was scheduled again before done.
+        bra     SRTX_Dispatcher             ; Test scheduled tasks starting w/highest priority task.
+;
+SRTX_Dispatcher_CheckSIO
+;
+		movlw	0							; Clear W.
+		banksel	SRTX_Sched_Cnt_TaskSIO
+        addwf   SRTX_Sched_Cnt_TaskSIO, W   ; Check if non-zero schedule count.
+        btfsc   STATUS, Z                   ; Skip if task scheduled.
+        bra     SRTX_Dispatcher_CheckADC    ; Task not scheduled, check next task.
+        call    SUSR_TaskSIO                ; Invoke task.
+		banksel	SRTX_Sched_Cnt_TaskSIO
+        decfsz  SRTX_Sched_Cnt_TaskSIO, F   ; Dec schedule count, this invocation done.
         nop                                 ; Trap, task was scheduled again before done.
         bra     SRTX_Dispatcher             ; Test scheduled tasks starting w/highest priority task.
 ;

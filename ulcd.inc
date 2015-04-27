@@ -32,3 +32,5 @@
 ;
         EXTERN      ULCD_VoltAscii0
         EXTERN      ULCD_TempAscii0
+;
+        LIST
