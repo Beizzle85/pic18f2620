@@ -1,8 +1,8 @@
         LIST
 ;*******************************************************************************
-; tinyRTX Filename: usio.inc (User Serial I/O communication routines)
+; tinyRTX Filename: slcd.inc (System Liquid Crystal Display driver)
 ;
-; Copyright 2015 Sycamore Software, Inc.  ** www.tinyRTX.com **
+; Copyright 2014 Sycamore Software, Inc.  ** www.tinyRTX.com **
 ; Distributed under the terms of the GNU Lesser General Purpose License v3
 ;
 ; This file is part of tinyRTX. tinyRTX is free software: you can redistribute
@@ -19,16 +19,16 @@
 ; copying.txt) along with tinyRTX.  If not, see <http://www.gnu.org/licenses/>.
 ;
 ; Revision history:
-;   17Apr15 Stephen_Higgins@KairosAutonomi.com
-;               Created from ui2c.inc.
-;   27Apr15 Stephen_Higgins@KairosAutonomi.com
-;               Added USIO_TxLCDMsgToSIO.
+;   20Oct03  SHiggins@tinyRTX.com  Created from scratch.
 ;
 ;*******************************************************************************
         NOLIST
 ;
-        EXTERN      USIO_Init
-        EXTERN      USIO_TxLCDMsgToSIO
-        EXTERN      USIO_MsgReceived
+; SLCD data structures.
+;
+#define     SLCD_BUFFER_LINE_SIZE   0x10
+;
+        EXTERN      SLCD_BufferLine1
+        EXTERN      SLCD_BufferLine2
 ;
         LIST

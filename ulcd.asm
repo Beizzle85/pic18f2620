@@ -24,13 +24,14 @@
 ;   13Aug14 SHiggins@tinyRTX.com Converted from PIC16877 to PIC18F452.
 ;	14Aug14 SHiggins@tinyRTX.com Rewrote ULCD_TableLookup from dt to tblrd.
 ;	14Apr15 Stephen_Higgins@KairosAutonomi.com  Insert SLCD service variables from slcd.asm.
+;	27Apr15 Stephen_Higgins@KairosAutonomi.com  Move SLCD service variables into minimal slcd.asm.
 ;
 ;*******************************************************************************
 ;
         errorlevel -302	
         #include    <p18f2620.inc>
         #include    <sm16.inc>
-;        #include    <slcd.inc>
+        #include    <slcd.inc>
 ;
 ;*******************************************************************************
 ;
@@ -39,26 +40,6 @@
 #define ULCD_LINE_1_START   0x00
 #define ULCD_LINE_1_END     0x50
 #define ULCD_LINE_1_LENGTH  0x10
-;
-;*******************************************************************************
-;
-; SLCD service variables.
-;
-; System Liquid Crystal Display variables.
-;
-; These are here only to facilitate the operation of ULCD services without including
-; the SLCD code.  SLCD code will not run on a 28-pin device in the PICDEM2-plus board.
-; However we want to keep all the ULCD processing, because that creates nice text messages,
-; and we might want to send that out a serial line one day, like the RS-232 to a PC.
-;
-SLCD_UdataSec       UDATA
-;
-#define     SLCD_BUFFER_LINE_SIZE   0x10
-;
-        GLOBAL  SLCD_BufferLine1
-SLCD_BufferLine1    res     SLCD_BUFFER_LINE_SIZE
-        GLOBAL  SLCD_BufferLine2
-SLCD_BufferLine2    res     SLCD_BUFFER_LINE_SIZE
 ;
 ;*******************************************************************************
 ;

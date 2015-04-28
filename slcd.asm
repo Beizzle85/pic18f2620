@@ -1,8 +1,8 @@
         LIST
 ;*******************************************************************************
-; tinyRTX Filename: usio.inc (User Serial I/O communication routines)
+; tinyRTX Filename: slcd.asm (System Liquid Crystal Display services)
 ;
-; Copyright 2015 Sycamore Software, Inc.  ** www.tinyRTX.com **
+; Copyright 2014 Sycamore Software, Inc.  ** www.tinyRTX.com **
 ; Distributed under the terms of the GNU Lesser General Purpose License v3
 ;
 ; This file is part of tinyRTX. tinyRTX is free software: you can redistribute
@@ -19,16 +19,32 @@
 ; copying.txt) along with tinyRTX.  If not, see <http://www.gnu.org/licenses/>.
 ;
 ; Revision history:
-;   17Apr15 Stephen_Higgins@KairosAutonomi.com
-;               Created from ui2c.inc.
+;   23Oct03 SHiggins@tinyRTX.com Created from scratch.
+;   29Jul14 SHiggins@tinyRTX.com Changed SLCD_ReadByte to macro to save stack.
+;   13Aug14 SHiggins@tinyRTX.com Converted from PIC16877 to PIC18F452.
 ;   27Apr15 Stephen_Higgins@KairosAutonomi.com
-;               Added USIO_TxLCDMsgToSIO.
+;                                Build minimal slcd.asm to hold SLCD vars and defines.
 ;
 ;*******************************************************************************
-        NOLIST
 ;
-        EXTERN      USIO_Init
-        EXTERN      USIO_TxLCDMsgToSIO
-        EXTERN      USIO_MsgReceived
+        errorlevel -302 
+        #include    <p18f2620.inc>
 ;
-        LIST
+;*******************************************************************************
+;
+; SLCD defines.
+;
+#define     SLCD_BUFFER_LINE_SIZE   0x10
+;
+; SLCD service variables.
+;
+; System Liquid Crystal Display variables.
+;
+SLCD_UdataSec       UDATA
+;
+        GLOBAL  SLCD_BufferLine1
+SLCD_BufferLine1    res     SLCD_BUFFER_LINE_SIZE
+        GLOBAL  SLCD_BufferLine2
+SLCD_BufferLine2    res     SLCD_BUFFER_LINE_SIZE
+;
+        end

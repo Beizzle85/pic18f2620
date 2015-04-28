@@ -2,7 +2,7 @@
 ;*******************************************************************************
 ; tinyRTX Filename: usio.asm (User Serial I/O communication routines)
 ;
-; Copyright 2014 Sycamore Software, Inc.  ** www.tinyRTX.com **
+; Copyright 2015 Sycamore Software, Inc.  ** www.tinyRTX.com **
 ; Distributed under the terms of the GNU Lesser General Purpose License v3
 ;
 ; This file is part of tinyRTX. tinyRTX is free software: you can redistribute
@@ -19,8 +19,10 @@
 ; copying.txt) along with tinyRTX.  If not, see <http://www.gnu.org/licenses/>.
 ;
 ; Revision history:
-;   17Apr15  Stephen_Higgins@KairosAutonomi.com
-;                                   Created from ui2c.asm.
+;   17Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Created from ui2c.asm.
+;   27Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Added USIO_TxLCDMsgToSIO.
 ;
 ;*******************************************************************************
 ;
@@ -28,8 +30,8 @@
         #include    <p18f2620.inc>
         #include    <srtx.inc>
         #include    <ssio.inc>
+        #include    <slcd.inc>
 ;
-        LIST
 ;*******************************************************************************
 ;
 ; User SIO defines.
@@ -81,10 +83,10 @@
 ;
 ; User SIO service variables.
 ;
-        GLOBAL  USIO_TempData
+SIO_UdataSec   UDATA
 ;
-USIO_UdataSec   UDATA
-USIO_TempData   res     1       ; Temporary data.
+USIO_TempData       res     1   ; Temporary data.
+USIO_DataXferCnt    res     1   ; Data transfer counter.
 ;
 ;*******************************************************************************
 ;
@@ -129,6 +131,38 @@ USIO_Init
 ;
 ;*******************************************************************************
 ;
+; USIO_TxLCDMsgToSIO is called from SUSR_TaskADC when an A/D conversion completes. 
+; It moves the message from the (unused) SLCD buffer to the SIO transmit buffer,
+; effectively replacing the LCD function with a transmit over the SIO (RS-232).
+;
+; Note that we use FSR1 because SSIO routines use FSR0. 
+;
+        GLOBAL  USIO_TxLCDMsgToSIO
+USIO_TxLCDMsgToSIO
+;
+        movlw   SLCD_BUFFER_LINE_SIZE       ; Size of source buffer.
+        banksel USIO_DataXferCnt
+        movwf   USIO_DataXferCnt            ; Size saved in data transfer counter.
+;
+        lfsr    1, SLCD_BufferLine2         ; Data pointer gets source start address.
+;
+USIO_TxLCDMsgToSIO_NextByte
+;
+        movf    POSTINC1, W                 ; Get char from source LCD buffer.
+        call    SSIO_PutByteTxBuffer        ; Move char to dest SIO Tx buffer.
+;
+        banksel USIO_DataXferCnt
+        decfsz  USIO_DataXferCnt, F         ; Dec count of data to copy, skip if all done.
+        bra     USIO_TxLCDMsgToSIO_NextByte ; More data to copy.
+;
+        movlw   0x0d
+        call    SSIO_PutByteTxBuffer        ; Move <CR> to dest SIO Tx buffer.
+        movlw   0x0a
+        call    SSIO_PutByteTxBuffer        ; Move <LF> to dest SIO Tx buffer.
+        return
+;
+;*******************************************************************************
+;
 ; USIO_MsgReceived is called from SSIO/SUSR when an SIO message completes. 
 ; It moves the message from the receive buffer to the transmit buffer, effectively
 ;   echoing it back to the sender.
@@ -142,7 +176,7 @@ USIO_MsgReceived
 ;
         call    SSIO_PutByteTxBuffer    ;put data in transmit buffer
         banksel USIO_TempData
-        movf    USIO_TempData,W         ;restore data
+        movf    USIO_TempData, W        ;restore data
 ;
         xorlw   0x0d                    ;compare with <CR> 
         bnz     USIO_MsgReceived        ;if not the same then move another byte

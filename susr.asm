@@ -36,6 +36,8 @@
 ;                                   Converted from PIC18F452 to PIC18F2620.
 ;  17Apr15  Stephen_Higgins@KairosAutonomi.com
 ;                                   Added usio.inc, SSIO_Init.
+;  27Apr15  Stephen_Higgins@KairosAutonomi.com
+;                                   Call USIO_TxLCDMsgToSIO instead of SLCD_RefreshLine2.
 ;
 ;*******************************************************************************
 ;
@@ -101,10 +103,6 @@ SUSR_Task1
         movlw   0x01
         xorwf   PORTB, F                ; Toggle LED 1.
         call    UADC_Trigger            ; Initiate new A/D conversion. (Enables ADC interrupt.)
-
-        #include <ssio.inc>
-        movlw   "A"
-        call    SSIO_PutByteTxBuffer
 ;
 ; UADC_Trigger enabled ADC interrupts.
 ;
@@ -144,6 +142,7 @@ SUSR_TaskADC
         call    UADC_RawToASCII         ; Convert A/D result to ASCII msg for display.
         call    ULCD_RefreshLine2       ; Update LCD data buffer with A/D and temperature.
 ;        call    SLCD_RefreshLine2       ; Send LCD data buffer to LCD.
+        call    USIO_TxLCDMsgToSIO      ; Send LCD data buffer to serial I/O (RS-232).
         smTraceL STRC_TSK_END_ADC
         return
 ;

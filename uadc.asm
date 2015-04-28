@@ -19,16 +19,19 @@
 ; copying.txt) along with tinyRTX.  If not, see <http://www.gnu.org/licenses/>.
 ;
 ; Revision history:
-;   27Jan04  SHiggins@tinyRTX.com  Split out from main user application.  For PICdem2plus demo board.
-;   30Jan04  SHiggins@tinyRTX.com  Updated to use 1023 steps to full range, not 1024.
-;   29Jul14  SHiggins@tinyRTX.com  Move UADC_SetupDelay to inline in UADC_Trigger, reducing stack.
-;   13Aug14  SHiggins@tinyRTX.com  Converted from PIC16877 to PIC18F452.
-;   18Aug14  SHiggins@tinyRTX.com  Minor optimizations.
-;   21Aug14  SHiggins@tinyRTX.com  Replaced FXM1616U with SM16_16x16u.
+;   27Jan04 SHiggins@tinyRTX.com  Split out from main user application.  For PICdem2plus demo board.
+;   30Jan04 SHiggins@tinyRTX.com  Updated to use 1023 steps to full range, not 1024.
+;   29Jul14 SHiggins@tinyRTX.com  Move UADC_SetupDelay to inline in UADC_Trigger, reducing stack.
+;   13Aug14 SHiggins@tinyRTX.com  Converted from PIC16877 to PIC18F452.
+;   18Aug14 SHiggins@tinyRTX.com  Minor optimizations.
+;   21Aug14 SHiggins@tinyRTX.com  Replaced FXM1616U with SM16_16x16u.
+;   26Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Added support for PIC18F2620, removed UADC_ADCON0_Temp.
+;               Removed unnecessary banksel's for SFR's in access RAM.
 ;
 ;*******************************************************************************
 ;
-        errorlevel -302	
+;        errorlevel -302	
         #include    <p18f2620.inc>
         #include    <sm16.inc>
         #include    <sbcd.inc>
@@ -38,6 +41,87 @@
 ;
 ; User ADC defines.
 ;
+;   18F452 specified.
+;   *****************
+;
+    IFDEF __18F452
+;
+#define UADC_18F452_ADCON0_VAL  0x01
+;
+; A/D conversion clock is 4MHz/2; A/D channel = 0; no conversion active; A/D on.
+;
+; bit 7 : ADCS1 : 0 : Clock Conversion Select (with ADCON1/ADCS2 = 0, Fosc/2)
+; bit 6 : ADCS0 : 0 : Clock Conversion Select (with ADCON1/ADCS2 = 0, Fosc/2)
+; bit 5 : CHS2  : 0 : Channel Select, 0b000 -> AN0
+; bit 4 : CHS1  : 0 : Channel Select, 0b000 -> AN0
+; bit 3 : CHS0  : 0 : Channel Select, 0b000 -> AN0
+; bit 2 : GO    : 0 : A/D Conversion Status
+; bit 1 : dc    : 0 : Unimplemented, read as 0
+; bit 0 : ADON  : 1 : A/D converter module is powered up
+;
+#define UADC_18F452_ADCON1_VAL  0x8e
+;
+; Vdd on Vref+; AN0 is analog, AN7-AN1 are discretes.
+;
+; bit 7 : ADFM  : 1 : Right-justified 10-bit A/D result
+; bit 6 : ADCS2 : 0 : Clock Conversion Select (with ADCON1/ADCS2:ADCS1 = 00, Fosc/2)
+; bit 5 : dc    : 0 : Unimplemented, read as 0
+; bit 4 : dc    : 0 : Unimplemented, read as 0
+; bit 3 : PCFG3 : 1 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN7-AN1 discretes
+; bit 2 : PCFG2 : 1 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN7-AN1 discretes
+; bit 1 : PCFG1 : 1 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN7-AN1 discretes
+; bit 0 : PCFG0 : 0 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN7-AN1 discretes
+;
+    ENDIF
+;
+;   18F2620 specified.
+;   ******************
+;
+    IFDEF __18F2620
+;
+#define UADC_18F2620_ADCON0_VAL  0x01
+;
+; A/D channel = 0; no conversion active; A/D on.
+;
+; bit 7 : dc    : 0 : Unimplemented, read as 0
+; bit 6 : dc    : 0 : Unimplemented, read as 0
+; bit 5 : CHS3  : 0 : Channel Select, 0b0000 -> AN0
+; bit 4 : CHS2  : 0 : Channel Select, 0b0000 -> AN0
+; bit 3 : CHS1  : 0 : Channel Select, 0b0000 -> AN0
+; bit 2 : CHS0  : 0 : Channel Select, 0b0000 -> AN0
+; bit 1 : GO    : 0 : A/D Conversion Status
+; bit 0 : ADON  : 1 : A/D converter module is powered up
+;
+#define UADC_18F2620_ADCON1_VAL  0x0e
+;
+; Vdd on Vref+, Vss on Vref- 
+; AN0 is analog, AN12-AN8 and AN4-AN1 are discretes. (No AN7-AN5 on 28-pin chips.)
+;
+; bit 7 : dc    : 0 : Unimplemented, read as 0
+; bit 6 : dc    : 0 : Unimplemented, read as 0
+; bit 5 : VCFG1 : 0 : Voltage Reference Configuration, Vss = Vref-
+; bit 4 : VCFG2 : 0 : Voltage Reference Configuration, Vdd = Vref+
+; bit 3 : PCFG3 : 1 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN12-AN1 discretes
+; bit 2 : PCFG2 : 1 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN12-AN1 discretes
+; bit 1 : PCFG1 : 1 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN12-AN1 discretes
+; bit 0 : PCFG0 : 0 : A/D Port Configuration Control, 0b1110 -> AN0 analog, AN12-AN1 discretes
+;
+#define UADC_18F2620_ADCON2_VAL  0x84
+;
+; Right-justified result; Tad = 4 Tosc (need at Tad > .7us, so 4 Tosc = 1.0us at Tosc = 250ns)
+; A/D acquisition is manual (could be set to 20 Tad, which is 20us). 
+;
+; bit 7 : ADFM  : 1 : 10-bit result is right-justified
+; bit 6 : dc    : 0 : Unimplemented, read as 0
+; bit 5 : ACQT2 : 0 : A/D Acquisition Time, 0b000 -> manual aquisition
+; bit 4 : ACQT1 : 0 : A/D Acquisition Time, 0b000 -> manual aquisition
+; bit 3 : ACQT0 : 0 : A/D Acquisition Time, 0b000 -> manual aquisition
+; bit 6 : ADCS2 : 1 : Clock Conversion Select, 0b100 -> Tad = 4 Tosc (Fosc/4)
+; bit 7 : ADCS1 : 0 : Clock Conversion Select, 0b100 -> Tad = 4 Tosc (Fosc/4)
+; bit 6 : ADCS0 : 0 : Clock Conversion Select, 0b100 -> Tad = 4 Tosc (Fosc/4)
+;
+    ENDIF
+;
 ;*******************************************************************************
 ;
 ; User ADC service variables.
@@ -46,7 +130,6 @@ UADC_UdataSec       UDATA
 ;
 UADC_DelayTimer     res     1   ; Countdown delay timer.
 UADC_Channel        res     1   ; A/D channel select.
-UADC_ADCON0_Temp    res     1   ; Temp reg copy.
 UADC_ResultRawHi    res     1   ; Raw A/D result, high byte.
 UADC_ResultRawLo    res     1   ; Raw A/D result, low byte.
 UADC_ResultScaledHi res     1   ; Scaled A/D result, high byte.
@@ -63,22 +146,27 @@ UADC_Init
 ;
 ; Ensure RA0 set as input to allow it to function as analog input.
 ;
-        banksel     TRISA
         bsf         TRISA, 0    ; TRISA bit 0 set to allow AN0 to function as analog input.
 ;
-; A/D conversion clock is 4MHz/2; A/D channel = 0; no conversion active; A/D on.
+; Program ADC registers per selected processor.
 ;
-        movlw   (0<<ADCS1)|(0<<ADCS0)|(0<<CHS2)|(0<<CHS1)|(0<<CHS0)|(0<<GO)|(1<<ADON)
-        banksel ADCON0
+    IFDEF __18F452
+        movlw   UADC_18F452_ADCON0_VAL
         movwf   ADCON0
-;
-; Right-justified 10-bit A/D result; Vref+ on Vdd; 1 analog on AN0, AN7-AN1 are discretes.
-;
-        movlw   (1<<ADFM)|(1<<PCFG3)|(1<<PCFG2)|(1<<PCFG1)|(0<<PCFG0)
-        banksel ADCON1
+        movlw   UADC_18F452_ADCON1_VAL
         movwf   ADCON1
+    ENDIF
 ;
-        return
+    IFDEF __18F2620
+        movlw   UADC_18F2620_ADCON0_VAL
+        movwf   ADCON0
+        movlw   UADC_18F2620_ADCON1_VAL
+        movwf   ADCON1
+        movlw   UADC_18F2620_ADCON2_VAL
+        movwf   ADCON2
+    ENDIF
+;
+    return
 ;
 ;*******************************************************************************
 ;
@@ -101,9 +189,7 @@ UADC_SetupDelay_Loop                    ; Loop uses 3 cycles each iteration.
 ;
 ; Trigger A/D conversion.
 ;
-        banksel PIE1
         bsf     PIE1, ADIE              ; Enable A/D interrupts. (BEFORE setting GO flag!)
-        banksel ADCON0
         bsf     ADCON0, GO              ; Trigger A/D conversion.
         return
 ;
@@ -114,14 +200,11 @@ UADC_RawToASCII
 ;
 ; Save completed A/D result bytes.
 ;
-        banksel ADRESH              ; Bank 0.
         movf    ADRESH, W           ; Get A/D result high byte.
         banksel UADC_ResultRawHi    ; Bank 0.
         movwf   UADC_ResultRawHi    ; Bank 0, high byte of A/D result.
 ;
-        banksel ADRESL              ; Bank 1.
         movf    ADRESL, W           ; Get A/D result low byte.
-        banksel UADC_ResultRawLo    ; Bank 0.
         movwf   UADC_ResultRawLo    ; Bank 0, low byte of A/D result.
 ;
 ; AD_ResultRawHi:AD_ResultRawLo contains right-justified 10-bit result, upper 6 bits are 0.
