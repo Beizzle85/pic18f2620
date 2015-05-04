@@ -24,7 +24,8 @@
 ; LICENSE INCLUDED BELOW IN ITS ENTIRETY.
 ;
 ; Revision history:
-;   16Apr15  Stephen_Higgins@KairosAutonomi.com Modified from p18_tiri.asm from
+;   16Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Modified from p18_tiri.asm from
 ;               Mike Garbutt at Microchip Technology Inc. All the interrupt discovery
 ;               was ripped out as tinyRTX already does that in SISD.  All the
 ;               "application loop" code was ripped out as that is handled by SRTX,
@@ -33,6 +34,17 @@
 ;               Also the high/low interrupt priorities replaced by non-prioritized ints.
 ;               Lots of banksel directives added, as now interfacing with code and variables 
 ;               that are not necessarily local. 
+;   29Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Optimized for locating all variables in same RAM page.
+;               Code now (just barely) supports 115.2K baud operation with 4 Mhz clock.
+;               Added persistant error counters.
+;               Removed redundant "buffer full" error checking.
+;               Fixed a fatal flaw in original code, where for receieve buffer overrun error,
+;               "ReceivedCR" is set but not stored in receive buffer.  This will trigger 
+;               transfer of data from receive to transmit buffer, and then that code will never
+;               find a CR to stop the transfer.  Instead it will get data of 0, and write that
+;               over the transmit buffer FOREVER.  Solution is to always store last received
+;               byte in receive buffer, so transfer routine can find it and quit.
 ;
 ;*******************************************************************************
 ;
@@ -85,38 +97,62 @@
 ;
 ;Bit Definitions
 ;
-#define SSIO_TxBufFull  0       ;bit indicates Tx buffer is full
-#define SSIO_TxBufEmpty 1       ;bit indicates Tx buffer is empty
-#define SSIO_RxBufFull  2       ;bit indicates Rx buffer is full
-#define SSIO_RxBufEmpty 3       ;bit indicates Rx buffer is empty
-#define SSIO_ReceivedCR 4       ;bit indicates <CR> character received
+#define SSIO_TxBufFull  0       ; Tx buffer is full.
+#define SSIO_TxBufEmpty 1       ; Tx buffer is empty.
+#define SSIO_RxBufFull  2       ; Rx buffer is full.
+#define SSIO_RxBufEmpty 3       ; Rx buffer is empty.
+#define SSIO_ReceivedCR 4       ; <CR> character received.
+#define SSIO_VerifyFlag 7       ; For verification.
 ;
 ;*******************************************************************************
 ;
 ; SSIO service variables, receive and transmit buffers.
 ;
-SSIO_UdataSec   UDATA       ; Currently this whole data section crammed into 
-                            ; one 256 RAM bank.  Code ASSUMES this is so, as it
-                            ; only changes bank first time any of these vars used.
+SSIO_UdataSec   UDATA       ; Currently this whole data section crammed into one
+                            ; 256 RAM bank.  Code ASSUMES this is so, as it only
+                            ; changes RAM bank first time any of these vars used.
+                            ; Also all pointer arithmetic optimized to modulo
+                            ; 256, variables and buffers) must be in one bank.
+;
+;   NOTE: To allow buffers to cross RAM bank boundary, code needs to look like:
+;SSIO_PutByteRxBuffer1
+;
+; (ADD) movff   FSR0H, SSIO_RxTailPtrH      ;save new EndPointer high byte
+;       movff   FSR0L, SSIO_RxTailPtrL      ;save new EndPointer low byte
+;
+; (ADD) movf    SSIO_RxHeadPtrH, W          ;get start pointer
+; (ADD) cpfseq  SSIO_RxTailPtrH             ;and compare with end pointer
+; (ADD) bra     SSIO_PutByteRxBuffer2       ;skip low bytes if high bytes not equal
+;
+;       movf    SSIO_RxHeadPtrL, W          ;get start pointer
+;       cpfseq  SSIO_RxTailPtrL             ;and compare with end pointer
+;       bra     SSIO_PutByteRxBufferExit
+;
+;       bsf     SSIO_Flags, SSIO_RxBufFull  ;if same then indicate buffer full
 ;
 #define SSIO_TX_BUF_LEN 0x70    ; Define transmit buffer size.
 #define SSIO_RX_BUF_LEN 0x70    ; Define receive buffer size.
 ;
-SSIO_Flags          res     1       ;byte for indicator flag bits
-SSIO_TempRxData     res     1       ;temporary data in Rx buffer routines 
-SSIO_TempTxData     res     1       ;temporary data in Tx buffer routines 
-SSIO_TxStartPtrH    res     1       ;pointer to start of data in Tx buffer
-SSIO_TxStartPtrL    res     1       ;pointer to start of data in Tx buffer
-SSIO_TxEndPtrH      res     1       ;pointer to end of data in Tx buffer
-SSIO_TxEndPtrL      res     1       ;pointer to end of data in Tx buffer
-SSIO_RxStartPtrH    res     1       ;pointer to start of data in Rx buffer
-SSIO_RxStartPtrL    res     1       ;pointer to start of data in Rx buffer
-SSIO_RxEndPtrH      res     1       ;pointer to end of data in Rx buffer
-SSIO_RxEndPtrL      res     1       ;pointer to end of data in Rx buffer
-SSIO_VarsSpace1     res     5       ;Reserve space so buffer aligns on boundary
-SSIO_TxBuffer       res     SSIO_TX_BUF_LEN     ;Tx buffer for data to transmit
-SSIO_VarsSpace2     res     0x10    ;Reserve space so buffer aligns on boundary
-SSIO_RxBuffer       res     SSIO_RX_BUF_LEN     ;Rx buffer for data to receive
+SSIO_Flags          res     1       ; SSIO flag bits.
+SSIO_TempRxData     res     1       ; Temp data in Rx routines. 
+SSIO_TempTxData     res     1       ; Temp data in Tx routines. 
+SSIO_TxHeadPtrH     res     1       ; Transmit buffer data head pointer (high byte).
+SSIO_TxHeadPtrL     res     1       ; Transmit buffer data head pointer (low byte).
+SSIO_TxTailPtrH     res     1       ; Transmit buffer data tail pointer (high byte).
+SSIO_TxTailPtrL     res     1       ; Transmit buffer data tail pointer (low byte).
+SSIO_TxPrevTailPtrL res     1       ; Transmit buffer data PREV tail pointer (low byte).
+SSIO_RxHeadPtrH     res     1       ; Receive buffer data head pointer (high byte).
+SSIO_RxHeadPtrL     res     1       ; Receive buffer data head pointer (low byte).
+SSIO_RxTailPtrH     res     1       ; Receive buffer data tail pointer (high byte).
+SSIO_RxTailPtrL     res     1       ; Receive buffer data tail pointer (low byte).
+SSIO_RxPrevTailPtrL res     1       ; Receive buffer data PREV tail pointer (low byte).
+SSIO_RxCntOERR      res     1       ; Count of Overrun errors.
+SSIO_RxCntFERR      res     1       ; Count of Framing errors.
+SSIO_RxCntBufOver   res     1       ; Count of RX Buffer Overrun errors.
+SSIO_TxCntBufOver   res     1       ; Count of TX Buffer Overrun errors.
+SSIO_VarsSpace1     res     .15     ; Reserve space so buffers align on boundaries.
+SSIO_TxBuffer       res     SSIO_TX_BUF_LEN     ; Transmit data buffer.
+SSIO_RxBuffer       res     SSIO_RX_BUF_LEN     ; Receive data buffer.
 ;
 ;*******************************************************************************
 ;
@@ -132,7 +168,11 @@ SSIO_CodeSec    CODE
 SSIO_InitFlags
 ;
         banksel SSIO_Flags      
-        clrf    SSIO_Flags      ;clear all flags
+        clrf    SSIO_Flags          ; Clear all flags.
+        clrf    SSIO_RxCntOERR      ; Clear all error counters.
+        clrf    SSIO_RxCntFERR
+        clrf    SSIO_RxCntBufOver
+        clrf    SSIO_TxCntBufOver
         return
 ;
 ;*******************************************************************************
@@ -143,16 +183,19 @@ SSIO_InitFlags
 SSIO_InitTxBuffer
 ;
         banksel SSIO_TxBuffer      
-        movlw   HIGH SSIO_TxBuffer          ;take high address of transmit buffer
-        movwf   SSIO_TxStartPtrH            ;and place in transmit start pointer
-        movwf   SSIO_TxEndPtrH              ;and place in transmit end pointer
+        movlw   HIGH SSIO_TxBuffer          ; First address of buffer.
+        movwf   SSIO_TxHeadPtrH             ; Init transmit head pointer.
+        movwf   SSIO_TxTailPtrH             ; Init transmit tail pointer.
 ;
-        movlw   LOW SSIO_TxBuffer           ;take low address of transmit buffer
-        movwf   SSIO_TxStartPtrL            ;and place in transmit start pointer
-        movwf   SSIO_TxEndPtrL              ;and place in transmit end pointer
+        movlw   LOW SSIO_TxBuffer           ; First address of buffer.
+        movwf   SSIO_TxHeadPtrL             ; Init transmit head pointer.
+        movwf   SSIO_TxTailPtrL             ; Init transmit tail pointer.
 ;
-        bcf     SSIO_Flags, SSIO_TxBufFull  ;indicate Tx buffer is not full
-        bsf     SSIO_Flags, SSIO_TxBufEmpty ;indicate Tx buffer is empty
+        movlw   LOW (SSIO_TxBuffer+(SSIO_TX_BUF_LEN-1)) ; Last address of buffer.
+        movwf   SSIO_TxPrevTailPtrL         ; Init transmit PREV tail pointer.
+;
+        bcf     SSIO_Flags, SSIO_TxBufFull  ; Tx buffer is not full.
+        bsf     SSIO_Flags, SSIO_TxBufEmpty ; Tx buffer is empty.
         return
 ;
 ;*******************************************************************************
@@ -163,34 +206,40 @@ SSIO_InitTxBuffer
 SSIO_InitRxBuffer
 ;
         banksel SSIO_RxBuffer      
-        movlw   HIGH SSIO_RxBuffer          ;take high address of receive buffer
-        movwf   SSIO_RxStartPtrH            ;and place in receive start pointer
-        movwf   SSIO_RxEndPtrH              ;and place in receive end pointer
+        movlw   HIGH SSIO_RxBuffer          ; First address of buffer.
+        movwf   SSIO_RxHeadPtrH             ; Init receive head pointer.
+        movwf   SSIO_RxTailPtrH             ; Init receive tail pointer.
 ;
-        movlw   LOW SSIO_RxBuffer           ;take low address of receive buffer
-        movwf   SSIO_RxStartPtrL            ;and place in receive start pointer
-        movwf   SSIO_RxEndPtrL              ;and place in receive end pointer
+        movlw   LOW SSIO_RxBuffer           ; First address of buffer.
+        movwf   SSIO_RxHeadPtrL             ; Init receive head pointer.
+        movwf   SSIO_RxTailPtrL             ; Init receive tail pointer.
 ;
-        bcf     SSIO_Flags, SSIO_RxBufFull  ;indicate Rx buffer is not full
-        bsf     SSIO_Flags, SSIO_RxBufEmpty ;indicate Rx buffer is empty
+        movlw   LOW (SSIO_RxBuffer+(SSIO_RX_BUF_LEN-1)) ; Last address of buffer.
+        movwf   SSIO_RxPrevTailPtrL         ; Init receive PREV tail pointer.
+;
+        bcf     SSIO_Flags, SSIO_RxBufFull  ; Rx buffer is not full.
+        bsf     SSIO_Flags, SSIO_RxBufEmpty ; Rx buffer is empty.
         return
 ;
-;------------------------------------
+;*******************************************************************************
+;
 ;Read data from the transmit buffer and put into transmit register.
 ;
         GLOBAL  SSIO_PutByteIntoTxHW
 SSIO_PutByteIntoTxHW
 ;
         banksel SSIO_Flags
-        btfss   SSIO_Flags, SSIO_TxBufEmpty ;check if transmit buffer is empty
-        bra     SSIO_PutByteIntoTxHW1       ;if not then go transmit
+        btfss   SSIO_Flags, SSIO_TxBufEmpty ; Skip if transmit buffer empty.
+        bra     SSIO_PutByteIntoTxHW1       ; Else not empty so go transmit.
 ;
-        bcf     PIE1,TXIE                   ;else disable Tx interrupt...
-        bra     SSIO_PutByteIntoTxHW_Exit   ; and leave this routine.
+;   NOTE: code unlikely to reach here, but just in case.
+;
+        bcf     PIE1,TXIE                   ; Empty so disable Tx interrupt.
+        bra     SSIO_PutByteIntoTxHW_Exit 
 ;
 SSIO_PutByteIntoTxHW1
-        rcall   SSIO_GetByteTxBuffer        ;get data from transmit buffer
-        movwf   TXREG                       ;and transmit
+        rcall   SSIO_GetByteTxBuffer        ; Get data from non-empty buffer.
+        movwf   TXREG                       ; Put data in HW transmit register.
 ;
 SSIO_PutByteIntoTxHW_Exit
         return
@@ -205,47 +254,49 @@ SSIO_GetByteFromRxHW
 ;   Check for serial errors and handle them if found.
 ;
         banksel SSIO_Flags
-        btfsc   RCSTA, OERR                     ;if overrun error
-        bra     SSIO_GetByteFromRxHW_ErrOERR    ;then go handle error
+        btfsc   RCSTA, OERR                     ; Skip if no overrun error.
+        bra     SSIO_GetByteFromRxHW_ErrOERR    ; Else go handle error.
 ;
-        btfsc   RCSTA, FERR                     ;if framing error
-        bra     SSIO_GetByteFromRxHW_ErrFERR    ;then go handle error
+        btfsc   RCSTA, FERR                     ; Skip if no framing error.
+        bra     SSIO_GetByteFromRxHW_ErrFERR    ; Else go handle error.
 ;
-        btfsc   SSIO_Flags, SSIO_RxBufFull      ;if buffer full
-        bra     SSIO_GetByteFromRxHW_ErrRxOver  ;then go handle error
+        btfsc   SSIO_Flags, SSIO_RxBufFull      ; Skip if no buffer overrun error.
+        bra     SSIO_GetByteFromRxHW_ErrRxOver  ; Else go handle error.
 ;
         bra     SSIO_GetByteFromRxHW_DataGood   ; Otherwise no errors so get good data.
 ;
-;   Error handling.
-;
-;error because OERR overrun error bit is set
-;can do special error handling here - this code simply clears and continues
+;   Overrun error handling.
 ;
 SSIO_GetByteFromRxHW_ErrOERR
-        bcf     RCSTA, CREN                     ;reset the receiver logic
-        bsf     RCSTA, CREN                     ;enable reception again
+        bcf     RCSTA, CREN                     ; Reset the receiver logic.
+        bsf     RCSTA, CREN                     ; Enable reception again.
+;
+        incfsz  SSIO_RxCntOERR, F               ; Increment overrun error count.
+        bra     SSIO_GetByteFromRxHW_Exit       ; Overrun error count did not rollover.
+;
+        decf    SSIO_RxCntOERR, F               ; Max overrun error count.
         bra     SSIO_GetByteFromRxHW_Exit
 ;
-;error because FERR framing error bit is set
-;can do special error handling here - this code simply clears and continues
+;   Framing error handling.
 ;
 SSIO_GetByteFromRxHW_ErrFERR
-        movf    RCREG, W                        ;discard received data that has error
+        movf    RCREG, W                        ; Discard received data that has error.
+;
+        incfsz  SSIO_RxCntFERR, F               ; Increment framing error count.
+        bra     SSIO_GetByteFromRxHW_Exit       ; Overrun error count did not rollover.
+;
+        decf    SSIO_RxCntFERR, F               ; Max framing error count.
         bra     SSIO_GetByteFromRxHW_Exit
 ;
-;error because receive buffer is full
-;can do special error handling here - this code checks and discards the data
+;  Receive buffer overrun error.  Save the data (overwriting last data).
 ;
 SSIO_GetByteFromRxHW_ErrRxOver
-        movf    RCREG, W                        ;discard received data
-        xorlw   0x0d                            ;but compare with <CR>      
-        btfsc   STATUS,Z                        ;check if the same
-        bsf     SSIO_Flags, SSIO_ReceivedCR     ;indicate <CR> character received
+        incfsz  SSIO_RxCntBufOver, F            ; Increment overrun error count.
+        bra     SSIO_GetByteFromRxHW_DataGood   ; Overrun error count did not rollover.
 ;
-        bra     SSIO_GetByteFromRxHW_CheckCR    ; We could just bra SSIO_GetByteFromRxHW_SchedTask
-                                                ; but maybe ReceivedCR will come in handy.
+        decf    SSIO_RxCntBufOver, F            ; Max overrun error count.
 ;
-;   Put good data into receive buffer, schedule task if <CR> found.
+;   Put good or overrun data into receive buffer, schedule task if <CR> found.
 ;   THIS WILL HAVE TO BE RE-EXAMINED FOR MORE GENERIC WAY OF TRIGGERING USER TASK
 ;   BECAUSE <CR> IS NOT A UNIVERSAL DEMARCATION OF COMPLETED MESSAGE.
 ;
@@ -263,16 +314,18 @@ SSIO_GetByteFromRxHW_DataGood
 ;    SRTX Dispatcher will find task scheduled and invoke SUSR_TaskSIO.
 ;
 SSIO_GetByteFromRxHW_CheckCR
-        btfss   SSIO_Flags, SSIO_ReceivedCR     ;indicates <CR> character received
-        bra     SSIO_GetByteFromRxHW_Exit
-        bcf     SSIO_Flags, SSIO_ReceivedCR     ;clear <CR> received indicator
+        btfss   SSIO_Flags, SSIO_ReceivedCR     ; Skip if <CR> received.
+        bra     SSIO_GetByteFromRxHW_Exit       ; <CR> not received so just exit.
+;
+        bcf     SSIO_Flags, SSIO_ReceivedCR     ; Clear <CR> received flag.
 ;
 ;    Schedule user task SUSR_TaskSIO.
 ;
 SSIO_GetByteFromRxHW_SchedTask
         banksel SRTX_Sched_Cnt_TaskSIO
         incfsz  SRTX_Sched_Cnt_TaskSIO, F       ; Increment task schedule count.
-        goto    SSIO_GetByteFromRxHW_Exit       ; Task schedule count did not rollover.
+        bra     SSIO_GetByteFromRxHW_Exit       ; Task schedule count did not rollover.
+;
         decf    SRTX_Sched_Cnt_TaskSIO, F       ; Max task schedule count.
 ;
 SSIO_GetByteFromRxHW_Exit
@@ -280,224 +333,235 @@ SSIO_GetByteFromRxHW_Exit
 ;
 ;*******************************************************************************
 ;
-;   Add a byte (in WREG) to the end of the transmit buffer.
+;   Add a byte (in WREG) to tail of transmit buffer.
+;
+;   NOTE: If we are storing a byte and the buffer is already full, don't store
+;   at current tail pointer nor update tail.  Instead store at previous
+;   tail pointer.  Continue to overwrite the last location in the buffer.
 ;
         GLOBAL  SSIO_PutByteTxBuffer
 SSIO_PutByteTxBuffer
 ;
-        bcf     PIE1, TXIE                          ;disable Tx interrupt to avoid conflict
+        bcf     PIE1, TXIE                      ; Disable Tx interrupt.
 ;
         banksel SSIO_Flags      
-        btfsc   SSIO_Flags, SSIO_TxBufFull          ;check if transmit buffer full
-        bra     SSIO_PutByteTxBuffer_BufFull        ;go handle error if full
+        btfss   SSIO_Flags, SSIO_TxBufFull      ; Skip if buffer full.
+        bra     SSIO_PutByteTxBuffer_StoreByte  ; Else store the byte at old tail ptr.
 ;
-        movff   SSIO_TxEndPtrH, FSR0H               ;put EndPointer into FSR0
-        movff   SSIO_TxEndPtrL, FSR0L               ;put EndPointer into FSR0
-        movwf   POSTINC0                            ;copy data to buffer
+;   Overrun error because storing new data and the buffer is already full.
 ;
-;test if buffer pointer needs to wrap around to beginning of buffer memory
+        incfsz  SSIO_TxCntBufOver, F            ; Increment overrun error count.
+        bra     SSIO_PutByteTxBuffer_PrevTail   ; Overrun error count did not rollover.
 ;
-        movlw   HIGH (SSIO_TxBuffer+SSIO_TX_BUF_LEN)    ;get last address of buffer
-        cpfseq  FSR0H                                   ;and compare with end pointer
-        bra     SSIO_PutByteTxBuffer1                   ;skip low bytes if high bytes not equal
+        decf    SSIO_TxCntBufOver, F            ; Max overrun error count.
 ;
-        movlw   LOW (SSIO_TxBuffer+SSIO_TX_BUF_LEN)     ;get last address of buffer
-        cpfseq  FSR0L                                   ;and compare with end pointer
-        bra     SSIO_PutByteTxBuffer1                   ;go save new pointer if at end
+SSIO_PutByteTxBuffer_PrevTail
+        movff   SSIO_TxTailPtrH, FSR0H          ; Get PREV tail pointer high byte.
+        movff   SSIO_TxPrevTailPtrL, FSR0L      ; Get PREV tail pointer low byte.
+        movwf   INDF0                           ; Overwrite data at last tail pointer.
+        bra     SSIO_PutByteTxBuffer_Exit       ; No pointer or flag handling so just exit.
 ;
-        lfsr    0, SSIO_TxBuffer                        ;point to beginning of buffer if at end
+;   Save data at old tail even though buffer may already be full.
+;
+SSIO_PutByteTxBuffer_StoreByte
+        movff   SSIO_TxTailPtrH, FSR0H          ; Get tail pointer high byte.
+        movff   SSIO_TxTailPtrL, FSR0L          ; Get tail pointer low byte.
+        movff   SSIO_TxTailPtrL, SSIO_TxPrevTailPtrL    ; Save PREV tail pointer.
+        movwf   POSTINC0                        ; Copy data, incr probable tail pointer.
+;
+;   Wrap tail pointer if needed.
+;
+        movlw   LOW (SSIO_TxBuffer+SSIO_TX_BUF_LEN) ; Find last address +1 of buffer.
+        cpfseq  FSR0L                           ; Skip if matches tail pointer.
+        bra     SSIO_PutByteTxBuffer1           ; No match, continue.
+;
+        lfsr    0, SSIO_TxBuffer                ; Reload tail pointer to buffer start.
+;
+;   Test if buffer is full.
 ;
 SSIO_PutByteTxBuffer1
-        movff   FSR0H, SSIO_TxEndPtrH        ;save new EndPointer high byte
-        movff   FSR0L, SSIO_TxEndPtrL        ;save new EndPointer low byte
+        movf    FSR0L, W                        ; Get updated probable tail pointer.
+        cpfseq  SSIO_TxHeadPtrL                 ; Skip if it will equal head pointer.
+        bra     SSIO_PutByteTxBuffer_SaveTail   ; Buffer not full, save new tail pointer.
 ;
-;test if buffer is full
+        bsf     SSIO_Flags, SSIO_TxBufFull      ; New tail would == head, now buffer full.
 ;
-        movf    SSIO_TxStartPtrH, W         ;get start pointer
-        cpfseq  SSIO_TxEndPtrH              ;and compare with end pointer
-        bra     SSIO_PutByteTxBuffer2       ;skip low bytes if high bytes not equal
+SSIO_PutByteTxBuffer_SaveTail
+        movff   FSR0L, SSIO_TxTailPtrL          ; Save new tail.
 ;
-        movf    SSIO_TxStartPtrL, W         ;get start pointer
-        cpfseq  SSIO_TxEndPtrL              ;and compare with end pointer
+SSIO_PutByteTxBuffer_Exit
+        bcf     SSIO_Flags, SSIO_TxBufEmpty     ; Flag buffer not empty.
 ;
-        bra     SSIO_PutByteTxBuffer2
-        bsf     SSIO_Flags, SSIO_TxBufFull  ;if same then indicate buffer full
-;
-SSIO_PutByteTxBuffer2
-        bcf     SSIO_Flags, SSIO_TxBufEmpty ;Tx buffer cannot be empty
-        bsf     PIE1, TXIE                  ;enable transmit interrupt
+;        btfss   SSIO_Flags, SSIO_VerifyFlag     ; Skip if verifying.
+        bsf     PIE1, TXIE                      ; Re-enable transmit interrupt.
         return
-;
-;error because attempting to store new data and the buffer is full
-;can do special error handling here - this code simply ignores the byte
-;
-SSIO_PutByteTxBuffer_BufFull
-        bsf     PIE1, TXIE                  ;enable transmit interrupt
-        return                              ;no save of data because buffer is full
 ;
 ;*******************************************************************************
 ;
-;Add a byte (in WREG) to the end of the receive buffer.
+;   Add a byte (in WREG) to tail of receive buffer.
+;   
+;   NOTE: This routine is time critical.  It barely runs in the time allocated
+;   for a 4 MHz clock at 115.2K baud.  It runs fine at 57.6K baud.  Consideration
+;   should be given to making this a high priority interrupt, so fast receives
+;   can be accomodated.
+;
+;   NOTE: If we are storing a byte and the buffer is already full, don't store
+;   at current tail pointer nor update tail.  Instead store at previous
+;   tail pointer.  Continue to overwrite the last location in the buffer.
+;   So when <CR> is received and stored, other routines will find it.
 ;
         GLOBAL  SSIO_PutByteRxBuffer
 SSIO_PutByteRxBuffer
 ;
-; NOTE: no disabling of RX interrupt because this likely called from RX ISR.
+; NOTE: no disabling/re-enabling of RX interrupt because this routine called from RX ISR.
 ;
-        banksel SSIO_Flags
-        btfsc   SSIO_Flags, SSIO_RxBufFull      ;check if receive buffer full
-        bra     SSIO_PutByteRxBuffer_BufFull    ;go handle error if full
+        banksel SSIO_Flags      
+        btfss   SSIO_Flags, SSIO_RxBufFull      ; Skip if buffer full.
+        bra     SSIO_PutByteRxBuffer_StoreByte  ; Else just store the byte at current tail.
 ;
-        movff   SSIO_RxEndPtrH, FSR0H           ;put EndPointer into FSR0
-        movff   SSIO_RxEndPtrL, FSR0L           ;put EndPointer into FSR0
-        movwf   POSTINC0                        ;copy data to buffer
+;   Overrun error because storing new data and the buffer is already full.
 ;
-;test if buffer pointer needs to wrap around to beginning of buffer memory
-
-        movlw   HIGH (SSIO_RxBuffer+SSIO_RX_BUF_LEN)    ;get last address of buffer
-        cpfseq  FSR0H                                   ;and compare with end pointer
-        bra     SSIO_PutByteRxBuffer1                   ;skip low bytes if high bytes not equal
+        incfsz  SSIO_RxCntBufOver, F            ; Increment overrun error count.
+        bra     SSIO_PutByteRxBuffer_LastTail   ; Overrun error count did not rollover.
 ;
-        movlw   LOW (SSIO_RxBuffer+SSIO_RX_BUF_LEN)     ;get last address of buffer
-        cpfseq  FSR0L                                   ;and compare with end pointer
-        bra     SSIO_PutByteRxBuffer1                   ;go save new pointer if not at end
+        decf    SSIO_RxCntBufOver, F            ; Max overrun error count.
 ;
-        lfsr    0, SSIO_RxBuffer                        ;point to beginning of buffer if at end
+SSIO_PutByteRxBuffer_LastTail
+        movff   SSIO_RxTailPtrH, FSR0H          ; Get PREV tail pointer high byte.
+        movff   SSIO_RxPrevTailPtrL, FSR0L      ; Get PREV tail pointer low byte.
+        movwf   INDF0                           ; Overwrite data at last tail pointer.
+        bra     SSIO_PutByteRxBuffer_Exit       ; No pointer or flag handling so just exit.
+;
+;   Save data at tail.
+;
+SSIO_PutByteRxBuffer_StoreByte
+        movff   SSIO_RxTailPtrH, FSR0H          ; Get tail pointer high byte.
+        movff   SSIO_RxTailPtrL, FSR0L          ; Get tail pointer low byte.
+        movff   SSIO_RxTailPtrL, SSIO_RxPrevTailPtrL    ; Save PREV tail pointer.
+        movwf   POSTINC0                        ; Copy data, incr tail pointer.
+;
+;   Wrap tail pointer if needed.
+;
+        movlw   LOW (SSIO_RxBuffer+SSIO_RX_BUF_LEN) ; Last address +1 of buffer.
+        cpfseq  FSR0L                           ; Skip if matches tail pointer.
+        bra     SSIO_PutByteRxBuffer1           ; No match, continue.
+;
+        lfsr    0, SSIO_RxBuffer                ; Reload tail pointer to buffer start.
+;
+;   Test if buffer is full.
 ;
 SSIO_PutByteRxBuffer1
-        movff   FSR0H, SSIO_RxEndPtrH       ;save new EndPointer high byte
-        movff   FSR0L, SSIO_RxEndPtrL       ;save new EndPointer low byte
+        movf    FSR0L, W                        ; Get updated tail pointer.
+        cpfseq  SSIO_RxHeadPtrL                 ; Skip if it now equals head pointer.
+        bra     SSIO_PutByteRxBuffer_SaveTail   ; Buffer not full, save new tail pointer.
 ;
-;test if buffer is full
+        bsf     SSIO_Flags, SSIO_RxBufFull      ; New tail == head, now buffer full.
 ;
-        movf    SSIO_RxStartPtrH, W         ;get start pointer
-        cpfseq  SSIO_RxEndPtrH              ;and compare with end pointer
-        bra     SSIO_PutByteRxBuffer2       ;skip low bytes if high bytes not equal
+SSIO_PutByteRxBuffer_SaveTail
+        movff   FSR0L, SSIO_RxTailPtrL          ; Save new tail.
 ;
-        movf    SSIO_RxStartPtrL, W         ;get start pointer
-        cpfseq  SSIO_RxEndPtrL              ;and compare with end pointer
-        bra     SSIO_PutByteRxBuffer2
-;
-        bsf     SSIO_Flags, SSIO_RxBufFull  ;if same then indicate buffer full
-;
-SSIO_PutByteRxBuffer2
-        bcf     SSIO_Flags, SSIO_RxBufEmpty ;Rx buffer cannot be empty
+SSIO_PutByteRxBuffer_Exit
+        bcf     SSIO_Flags, SSIO_RxBufEmpty     ; Flag buffer not empty.
         return
-;
-;error because attempting to store new data and the buffer is full
-;can do special error handling here - this code simply ignores the byte
-;
-SSIO_PutByteRxBuffer_BufFull
-        return                              ;no save of data because buffer is full
 ;
 ;*******************************************************************************
 ;
-;   Remove and return (in WREG) the byte at the start of the transmit buffer.
+;   Remove and return (in WREG) the byte at head of transmit buffer.
 ;
         GLOBAL  SSIO_GetByteTxBuffer
 SSIO_GetByteTxBuffer
 ;   
         banksel SSIO_Flags
-        btfsc   SSIO_Flags, SSIO_TxBufEmpty             ;check if transmit buffer empty
-        bra     SSIO_GetByteTxBuffer_BufEmpty           ;go handle error if empty
+        btfsc   SSIO_Flags, SSIO_TxBufEmpty     ; Skip if buffer not empty.
+        bra     SSIO_GetByteTxBuffer_BufEmpty   ; Else buffer empty, just leave.
 ;
-        movff   SSIO_TxStartPtrH, FSR0H                 ;put StartPointer into FSR0
-        movff   SSIO_TxStartPtrL, FSR0L                 ;put StartPointer into FSR0
-        movff   POSTINC0, SSIO_TempTxData               ;save data from buffer
+;   Get data at old head.
 ;
-;test if buffer pointer needs to wrap around to beginning of buffer memory
-
-        movlw   HIGH (SSIO_TxBuffer+SSIO_TX_BUF_LEN)    ;get last address of buffer
-        cpfseq  FSR0H                                   ;and compare with start pointer
-        bra     SSIO_GetByteTxBuffer1                   ;skip low bytes if high bytes not equal
+        movff   SSIO_TxHeadPtrH, FSR0H          ; Get head pointer high byte.
+        movff   SSIO_TxHeadPtrL, FSR0L          ; Get head pointer low byte.
+        movff   POSTINC0, SSIO_TempTxData       ; Copy data, incr head pointer.
 ;
-        movlw   LOW (SSIO_TxBuffer+SSIO_TX_BUF_LEN)     ;get last address of buffer
-        cpfseq  FSR0L                                   ;and compare with start pointer
-        bra     SSIO_GetByteTxBuffer1                   ;go save new pointer if at end
+;   Wrap head pointer if needed.
 ;
-        lfsr    0, SSIO_TxBuffer                        ;point to beginning of buffer if at end
+        movlw   LOW (SSIO_TxBuffer+SSIO_TX_BUF_LEN) ; Last address +1 of buffer.
+        cpfseq  FSR0L                           ; Skip if matches head pointer.
+        bra     SSIO_GetByteTxBuffer1           ; No match, continue.
+;
+        lfsr    0, SSIO_TxBuffer                ; Reload head pointer buffer start.
 ;
 SSIO_GetByteTxBuffer1
-        movff   FSR0H,SSIO_TxStartPtrH                  ;save new StartPointer value
-        movff   FSR0L, SSIO_TxStartPtrL                 ;save new StartPointer value
+        movff   FSR0L, SSIO_TxHeadPtrL          ; Save new head pointer.
 ;
-;test if buffer is now empty
+;   Test if buffer is empty.
 ;
-        movf    SSIO_TxEndPtrH, W               ;get end pointer
-        cpfseq  SSIO_TxStartPtrH                ;and compare with start pointer
-        bra     SSIO_GetByteTxBuffer2           ;skip low bytes if high bytes not equal
+        movf    FSR0L, W                        ; Get updated head pointer.
+        cpfseq  SSIO_TxTailPtrL                 ; Skip if it equals tail pointer.
+        bra     SSIO_GetByteTxBuffer2           ; Buffer not empty.
 ;
-        movf    SSIO_TxEndPtrL, W               ;get end pointer
-        cpfseq  SSIO_TxStartPtrL                ;and compare with start pointer
-        bra     SSIO_GetByteTxBuffer2
-;
-        bsf     SSIO_Flags, SSIO_TxBufEmpty     ;if same then indicate buffer empty
+        bsf     SSIO_Flags, SSIO_TxBufEmpty     ; New head == tail, flag buffer empty.
+        bcf     PIE1,TXIE                       ; Empty so disable Tx interrupt.
 ;
 SSIO_GetByteTxBuffer2
-        bcf     SSIO_Flags, SSIO_TxBufFull      ;Tx buffer cannot be full
-        movf    SSIO_TempTxData, W              ;restore data from buffer
+        bcf     SSIO_Flags, SSIO_TxBufFull      ; Since removed byte buffer cannot be full.
+        movf    SSIO_TempTxData, W              ; Return data from buffer.
         return
 ;
-;error because attempting to read data from an empty buffer
-;can do special error handling here - this code simply returns zero
+;   Nothing to do if trying to read from empty buffer.
+;   This is not necessarily an error condition.
 ;
 SSIO_GetByteTxBuffer_BufEmpty
-        retlw   0       ;buffer empty, return zero
+;
+;   NOTE: code unlikely to reach here, but just in case.
+;
+        retlw   0                               ; Buffer empty, return zero value.
 ;
 ;*******************************************************************************
 ;
-;Remove and return (in WREG) the byte at the start of the receive buffer.
+;Remove and return (in WREG) the byte at head of receive buffer.
 ;
         GLOBAL  SSIO_GetByteRxBuffer
 SSIO_GetByteRxBuffer
 ;
+        bcf     PIE1, RCIE                      ; Disable Rx interrupt.
         banksel SSIO_Flags
-        bcf     PIE1, RCIE                      ;disable Rx interrupt to avoid conflict
-        btfsc   SSIO_Flags, SSIO_RxBufEmpty     ;check if receive buffer empty
-        bra     SSIO_GetByteRxBuffer_BufEmpty   ;go handle error if empty
+        btfsc   SSIO_Flags, SSIO_RxBufEmpty     ; Skip if buffer not empty.
+        bra     SSIO_GetByteRxBuffer_BufEmpty   ; Else buffer empty, just leave.
 ;
-        movff   SSIO_RxStartPtrH, FSR0H         ;put StartPointer into FSR0
-        movff   SSIO_RxStartPtrL, FSR0L         ;put StartPointer into FSR0
-        movff   POSTINC0, SSIO_TempRxData       ;save data from buffer
+;   Get data at head.
 ;
-;test if buffer pointer needs to wrap around to beginning of buffer memory
+        movff   SSIO_RxHeadPtrH, FSR0H          ; Get head pointer high byte.
+        movff   SSIO_RxHeadPtrL, FSR0L          ; Get head pointer low byte.
+        movff   POSTINC0, SSIO_TempRxData       ; Copy data, incr head pointer.
 ;
-        movlw   HIGH (SSIO_RxBuffer+SSIO_RX_BUF_LEN)    ;get last address of buffer
-        cpfseq  FSR0H                                   ;and compare with start pointer
-        bra     SSIO_GetByteRxBuffer1                   ;skip low bytes if high bytes not equal
+;   Wrap head pointer if needed.
 ;
-        movlw   LOW (SSIO_RxBuffer+SSIO_RX_BUF_LEN)     ;get last address of buffer
-        cpfseq  FSR0L                                   ;and compare with start pointer
-        bra     SSIO_GetByteRxBuffer1                   ;go save new pointer if at end
+        movlw   LOW (SSIO_RxBuffer+SSIO_RX_BUF_LEN) ; Last address +1 of buffer.
+        cpfseq  FSR0L                           ; Skip if matches head pointer.
+        bra     SSIO_GetByteRxBuffer1           ; No match, continue.
 ;
-        lfsr    0, SSIO_RxBuffer                        ;point to beginning of buffer if at end
+        lfsr    0, SSIO_RxBuffer                ; Reload head pointer buffer start.
 ;
 SSIO_GetByteRxBuffer1
-        movff   FSR0H, SSIO_RxStartPtrH     ;save new StartPointer value
-        movff   FSR0L, SSIO_RxStartPtrL     ;save new StartPointer value
+        movff   FSR0L, SSIO_RxHeadPtrL          ; Save new head pointer.
 ;
-;test if buffer is now empty
+;   Test if buffer is empty.
 ;
-        movf    SSIO_RxEndPtrH, W           ;get end pointer
-        cpfseq  SSIO_RxStartPtrH            ;and compare with start pointer
-        bra     SSIO_GetByteRxBuffer2       ;skip low bytes if high bytes not equal
+        movf    FSR0L, W                        ; Get updated head pointer.
+        cpfseq  SSIO_RxTailPtrL                 ; Skip if it equals tail pointer.
+        bra     SSIO_GetByteRxBuffer2           ; Buffer not empty.
 ;
-        movf    SSIO_RxEndPtrL, W           ;get end pointer
-        cpfseq  SSIO_RxStartPtrL            ; and compare with start pointer
-        bra     SSIO_GetByteRxBuffer2
-;
-        bsf     SSIO_Flags, SSIO_RxBufEmpty ;if same then indicate buffer empty
+        bsf     SSIO_Flags, SSIO_RxBufEmpty     ; New head == tail, flag buffer empty.
 ;
 SSIO_GetByteRxBuffer2
-        bcf     SSIO_Flags,SSIO_RxBufFull   ;Rx buffer cannot be full
-        movf    SSIO_TempRxData, W          ;restore data from buffer
-        bsf     PIE1, RCIE                  ;enable receive interrupt
+        bcf     SSIO_Flags, SSIO_RxBufFull      ; Since removed byte buffer cannot be full.
+        movf    SSIO_TempRxData, W              ; Return data from buffer.
+        bsf     PIE1, RCIE                      ; Re-enable Rx interrupt.
         return
 ;
-;error because attempting to read data from an empty buffer
-;can do special error handling here - this code simply returns zero
+;   Nothing to do if trying to read from empty buffer.
+;   This is not necessarily an error condition.
 ;
 SSIO_GetByteRxBuffer_BufEmpty
-        bsf     PIE1, RCIE                  ;enable receive interrupt
-        retlw   0                           ;buffer empty, return zero
+        bsf     PIE1, RCIE                      ; Re-enable Rx interrupt.
+        retlw   0                               ; Buffer empty, return zero value.
         end

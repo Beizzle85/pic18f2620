@@ -26,7 +26,10 @@
 ;  30Jan04  SHiggins@tinyRTX.com  Refined initialization.
 ;  29Jul14  SHiggins@tinyRTX.com  Moved UAPP_Timer1Init to MACRO to save stack.
 ;  13Aug14  SHiggins@tinyRTX.com  Converted from PIC16877 to PIC18F452.
-;  14Apr15  Stephen_Higgins@KairosAutonomi.com  Converted from PIC18F452 to PIC18F2620.
+;  14Apr15  Stephen_Higgins@KairosAutonomi.com
+;               Converted from PIC18F452 to PIC18F2620.
+;  29Apr15  Stephen_Higgins@KairosAutonomi.com
+;               Added support for 2010 PICDEM2+ demo board (no 4 Mhz crystal).
 ;
 ;*******************************************************************************
 ;
@@ -37,11 +40,11 @@
 ; Functions:
 ;  1) Read 1 A/D channel, convert A/D signal to engineering units and ASCII.
 ;  2) Read TC74 temperature value using I2C bus, convert to ASCII.
-;  3) (NO PORT D... Send ASCII text and commands to LCD display using 4-bit bus.)
+;  3) Send ASCII text to RS-232 port.  Receive and echo RS-232 bytes.
 ;
 ;*******************************************************************************
 ;
-; Complete PIC16F877 (40-pin device) pin assignments for PICDEM 2 Plus Demo Board:
+; Complete PIC18F2620 (28-pin device) pin assignments for PICDEM 2 Plus (2002) Demo Board:
 ;
 ;  1) MCLR*/Vpp         = Reset/Programming connector(1): (active low, with debounce H/W)
 ;  2) RA0/AN0           = Analog In: Potentiometer Voltage 
@@ -50,8 +53,17 @@
 ;  5) RA3/AN3/Vref+     = Discrete Out: LCD RS (SLCD_CTRL_RS)
 ;  6) RA4/TOCKI         = Discrete In:  Pushbutton S2 (active low, no debounce H/W)
 ;  7) RA5/AN4/SS*       = No Connect: (configured as Discrete In)
-;  8) Vss               = Programming connector(3) (Ground) 
+;  8) Vss               = Programming connector(3) (Ground)
+;
+;   External 4 Mhz crystal installed in Y2, PICDEM 2 Plus (2002).
+;
 ;  9) OSC1/CLKIN        = 4 MHz clock in (4 MHz/4 = 1 MHz = 1us instr cycle)
+;
+;   External 4 Mhz crystal NOT installed in Y2, PICDEM 2 Plus (2010) PN 02-01630-1.
+;   Note that Jumper J7 should not be connected.
+;
+;  9) OSC1/CLKIN        = No Connect.
+;
 ; 10) OSC2/CLKOUT       = (non-configurable output)
 ; 11) RC0/T1OSO/T1CKI   = No Connect: (configured as Discrete In) (possible future Timer 1 OSO)
 ; 12) RC1/T1OSI         = No Connect: (configured as Discrete In) (possible future Timer 1 OSI)
@@ -78,6 +90,24 @@
         errorlevel -302	
         #include    <p18f2620.inc>
 ;
+;
+;*******************************************************************************
+;
+; User SIO defines.
+;
+#define UAPP_OSCCON_VAL  0x66
+;
+;   4 Mhz clock; use internal oscillator block.
+;
+; bit 7 : IDLEN : 0 : Device enters Sleep mode on SLEEP instruction
+; bit 6 : IRCF2 : 1 : Internal Oscillator Frequency Select, 0b110 -> 4 Mhz
+; bit 5 : IRCF1 : 1 : Internal Oscillator Frequency Select, 0b110 -> 4 Mhz
+; bit 4 : IRCF0 : 0 : Internal Oscillator Frequency Select, 0b110 -> 4 Mhz
+; bit 3 : OSTS  : 0 : Oscillator Start-up Timer time-out is running; primary oscillator is not ready
+; bit 2 : IOFS  : 1 : INTOSC frequency is stable
+; bit 1 : SCS1  : 1 : System Clock Select, 0b1x -> use internal oscillator block
+; bit 0 : SCS0  : 0 : System Clock Select, 0b1x -> use internal oscillator block
+;
 ;*******************************************************************************
 ;
 ;  User application RAM variable definitions.
@@ -91,6 +121,17 @@ UAPP_Temp       res     1   ; General purpose scratch register (unused).
 ; User application Power-On Reset initialization.
 ;
 UAPP_CodeSec    CODE
+;
+        GLOBAL  UAPP_POR_Init_PhaseA
+UAPP_POR_Init_PhaseA
+;
+        movlw   UAPP_OSCCON_VAL
+        movwf   OSCCON              ; 4 Mhz clock; use internal oscillator block.
+        return
+;
+;*******************************************************************************
+;
+; User application Power-On Reset initialization.
 ;
         GLOBAL  UAPP_POR_Init
 UAPP_POR_Init

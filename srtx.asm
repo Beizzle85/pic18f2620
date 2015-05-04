@@ -209,7 +209,7 @@ SRTX_Dispatcher_CheckSIO
         addwf   SRTX_Sched_Cnt_TaskSIO, W   ; Check if non-zero schedule count.
         btfsc   STATUS, Z                   ; Skip if task scheduled.
         bra     SRTX_Dispatcher_CheckADC    ; Task not scheduled, check next task.
-        call    SUSR_TaskSIO                ; Invoke task.
+        call    SUSR_TaskSIO_MsgRcvd        ; Invoke task.
 		banksel	SRTX_Sched_Cnt_TaskSIO
         decfsz  SRTX_Sched_Cnt_TaskSIO, F   ; Dec schedule count, this invocation done.
         nop                                 ; Trap, task was scheduled again before done.

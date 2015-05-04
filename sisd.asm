@@ -132,10 +132,12 @@ SISD_CodeSec	CODE
 ;
 ; SISD: System Interrupt Service Director.
 ;
-; 3 possible sources of interrupts:
+; 5 possible sources of interrupts:
 ;   a) Timer1 expires. (Initiate A/D conversion, schedule new timer int in 100ms.)
 ;   b) A/D conversion completed. (Convert reading to ASCII.)
 ;   c) I2C event completed. (Multiple I2C events to transmit ASCII.)
+;   d) RS-232 Receive byte. (Move byte from HW to receive buffer.)    
+;   e) RS-232 Transmit byte. (Move byte (if there is one) from transmit buffer to HW.)
 ;
 ;*******************************************************************************
 ;
@@ -144,55 +146,60 @@ SISD_CodeSec	CODE
 ;
 SISD_Director
 ;
-; Test for Timer1 rollover.
-;
-        btfss   PIR1, TMR1IF            ; Skip if Timer1 interrupt flag set.
-        bra     SISD_Director_CheckADC  ; Timer1 int flag not set, check other ints.
-        bcf     PIR1, TMR1IF            ; Clear Timer1 interrupt flag.
-        call    SUSR_Timebase           ; User re-init of timebase interrupt.
-        call    SRTX_Scheduler          ; SRTX scheduler when timebase interupt, must RETURN at end.
-        bra     SISD_Director_Exit      ; Only execute single interrupt handler.
-;
-; Test for completion of A/D conversion.
-;
-SISD_Director_CheckADC
-        btfss   PIR1, ADIF              ; Skip if A/D interrupt flag set.
-        bra     SISD_Director_CheckI2C  ; A/D int flag not set, check other ints.
-        bcf     PIR1, ADIF              ; Clear A/D interrupt flag.
-        banksel PIE1
-        bcf     PIE1, ADIE              ; Disable A/D interrupts.
-        banksel SRTX_Sched_Cnt_TaskADC
-        incfsz  SRTX_Sched_Cnt_TaskADC, F   ; Increment task schedule count.
-        bra     SISD_Director_Exit          ; Task schedule count did not rollover.
-        decf    SRTX_Sched_Cnt_TaskADC, F   ; Max task schedule count.
-        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
-;
-; Test for completion of I2C event.
-;
-SISD_Director_CheckI2C
-        btfss   PIR1, SSPIF                 ; Skip if I2C interrupt flag set.
-        bra     SISD_Director_CheckSIO_Rx   ; I2C int flag not set, check other ints.
-        bcf     PIR1, SSPIF                 ; Clear I2C interrupt flag.
-        call    SUSR_ISR_I2C                ; User ISR handling when I2C event.
-        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
-;
 ; Test for completion of SIO receive event.
 ;
-SISD_Director_CheckSIO_Rx
+;   NOTE: Because transmitting device not looking for flow control, this interrupt has to be
+;   checked first and finish fast.
+;
         btfss   PIR1, RCIF                  ; Skip if RCIF (receive int) flag set.
         bra     SISD_Director_CheckSIO_Tx   ; RCIF int flag not set, check other ints.
-        btfsc	PIE1,RCIE                   ; Skip if RCIE (receive int) not enabled.
+        btfss	PIE1,RCIE                   ; Skip if RCIE (receive int) enabled.
+        bra     SISD_Director_CheckSIO_Tx   ; RCIF int flag not set, check other ints.
         call    SSIO_GetByteFromRxHW        ; RCIF and RCIE both set, System ISR handling when SIO_Rx event.
         bra     SISD_Director_Exit          ; Only execute single interrupt handler.
 ;
 ; Test for completion of SIO transmit event.
 ;
 SISD_Director_CheckSIO_Tx
-        btfss   PIR1, TXIF              ; Skip if TXIF (transmit int) flag set.
-        bra     SISD_Unknown_Int        ; TXIF int flag not set, check other ints.
-		btfsc	PIE1, TXIE	            ; Skip if TXIE clear (transmit int) not enabled.
-		call	SSIO_PutByteIntoTxHW    ; TXIF and TXIE both set, System ISR handling when SIO_Tx event.
-        bra     SISD_Director_Exit      ; Only execute single interrupt handler.
+        btfss   PIR1, TXIF                  ; Skip if TXIF (transmit int) flag set.
+        bra     SISD_Director_CheckI2C      ; TXIF int flag not set, check other ints.
+		btfss	PIE1, TXIE	                ; Skip if TXIE clear (transmit int) enabled.
+        bra     SISD_Director_CheckI2C      ; TXIF int flag not set, check other ints.
+		call	SSIO_PutByteIntoTxHW        ; TXIF and TXIE both set, System ISR handling when SIO_Tx event.
+        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
+;
+; Test for completion of I2C event.
+;
+SISD_Director_CheckI2C
+        btfss   PIR1, SSPIF                 ; Skip if I2C interrupt flag set.
+        bra     SISD_Director_CheckTMR1     ; I2C int flag not set, check other ints.
+        bcf     PIR1, SSPIF                 ; Clear I2C interrupt flag.
+        call    SUSR_ISR_I2C                ; User ISR handling when I2C event.
+        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
+;
+; Test for Timer1 rollover.
+;
+SISD_Director_CheckTMR1
+        btfss   PIR1, TMR1IF                ; Skip if Timer1 interrupt flag set.
+        bra     SISD_Director_CheckADC      ; Timer1 int flag not set, check other ints.
+        bcf     PIR1, TMR1IF                ; Clear Timer1 interrupt flag.
+        call    SUSR_Timebase               ; User re-init of timebase interrupt.
+        call    SRTX_Scheduler              ; SRTX scheduler when timebase interupt, must RETURN at end.
+        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
+;
+; Test for completion of A/D conversion.
+;
+SISD_Director_CheckADC
+        btfss   PIR1, ADIF                  ; Skip if A/D interrupt flag set.
+        bra     SISD_Unknown_Int            ; A/D int flag not set, check other ints.
+        bcf     PIR1, ADIF                  ; Clear A/D interrupt flag.
+        banksel PIE1
+        bcf     PIE1, ADIE                  ; Disable A/D interrupts.
+        banksel SRTX_Sched_Cnt_TaskADC
+        incfsz  SRTX_Sched_Cnt_TaskADC, F   ; Increment task schedule count.
+        bra     SISD_Director_Exit          ; Task schedule count did not rollover.
+        decf    SRTX_Sched_Cnt_TaskADC, F   ; Max task schedule count.
+        bra     SISD_Director_Exit          ; Only execute single interrupt handler.
 ;
 ; This point only reached if unknown interrupt occurs, any error handling can go here.
 ;

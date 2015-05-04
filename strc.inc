@@ -19,12 +19,14 @@
 ; copying.txt) along with tinyRTX.  If not, see <http://www.gnu.org/licenses/>.
 ;
 ; Revision history:
-;   20Feb04  SHiggins@tinyRTX.com  Created from scratch.
-;   12Aug14  SHiggins@tinyRTX.com  Converted from PIC16877 to PIC18F452.
-;   15Aug14  SHiggins@tinyRTX.com  Changed smTrace to smTraceL, added smTraceW.
-;   03Sep14  SHiggins@tinyRTX.com  Added STRC_ISR_BEG_I2C and STRC_ISR_END_I2C.
-;   17Apr15  Stephen_Higgins@KairosAutonomi.com
-;                                  Added STRC_TSK_BEG_SIO and STRC_TSK_END_SIO.
+;   20Feb04 SHiggins@tinyRTX.com  Created from scratch.
+;   12Aug14 SHiggins@tinyRTX.com  Converted from PIC16877 to PIC18F452.
+;   15Aug14 SHiggins@tinyRTX.com  Changed smTrace to smTraceL, added smTraceW.
+;   03Sep14 SHiggins@tinyRTX.com  Added STRC_ISR_BEG_I2C and STRC_ISR_END_I2C.
+;   17Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Added STRC_TSK_BEG_SIO and STRC_TSK_END_SIO.
+;   28Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Added STRC_TSK_BEG_SIO_RX/TX and STRC_TSK_END_SIO_RX/TX.
 ;
 ;*********************************************************************************************
         NOLIST
@@ -40,8 +42,10 @@ STRC_TSK_BEG_3      EQU     0x31
 STRC_TSK_END_3      EQU     0x32
 STRC_TSK_BEG_I2C    EQU     0x61
 STRC_TSK_END_I2C    EQU     0x62
-STRC_TSK_BEG_SIO    EQU     0x71
-STRC_TSK_END_SIO    EQU     0x72
+STRC_TSK_BEG_SIO_RX EQU     0x71
+STRC_TSK_END_SIO_RX EQU     0x72
+STRC_TSK_BEG_SIO_TX EQU     0x73
+STRC_TSK_END_SIO_TX EQU     0x74
 STRC_TSK_BEG_ADC    EQU     0x81
 STRC_TSK_END_ADC    EQU     0x82
 STRC_ISR_BEG_I2C    EQU     0x91    ; Calls to smTrace during ints currently not supported.

@@ -32,12 +32,13 @@
 ;									both the trace buffer and RAM.  Unresolved.
 ;  03Sep14  SHiggins@tinyRTX.com	Rename SUSR_TaskI2C to SUSR_ISR_I2C, remove SUSR_UdataSec.
 ;                                   New SUSR_TaskI2C now invokes UI2C_MsgTC74ProcessData.
-;  14Apr15  Stephen_Higgins@KairosAutonomi.com
-;                                   Converted from PIC18F452 to PIC18F2620.
-;  17Apr15  Stephen_Higgins@KairosAutonomi.com
-;                                   Added usio.inc, SSIO_Init.
-;  27Apr15  Stephen_Higgins@KairosAutonomi.com
-;                                   Call USIO_TxLCDMsgToSIO instead of SLCD_RefreshLine2.
+;   14Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Converted from PIC18F452 to PIC18F2620.
+;   17Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Added usio.inc, SSIO_Init.
+;   27Apr15 Stephen_Higgins@KairosAutonomi.com
+;               Call USIO_TxLCDMsgToSIO instead of SLCD_RefreshLine2.
+;               Removed unnecessary banksel's for SFR's in access RAM.
 ;
 ;*******************************************************************************
 ;
@@ -66,7 +67,7 @@ SUSR_CodeSec    CODE
 ;
         GLOBAL  SUSR_POR_PhaseA
 SUSR_POR_PhaseA
-        nop
+        call    UAPP_POR_Init_PhaseA    ; User app POR time-critical init.
         return
 ;
 ; User initialization at Power-On Reset Phase B.
@@ -99,7 +100,6 @@ SUSR_Timebase
         GLOBAL  SUSR_Task1
 SUSR_Task1
         smTraceL STRC_TSK_BEG_1
-        banksel PORTB
         movlw   0x01
         xorwf   PORTB, F                ; Toggle LED 1.
         call    UADC_Trigger            ; Initiate new A/D conversion. (Enables ADC interrupt.)
@@ -114,7 +114,6 @@ SUSR_Task1
         GLOBAL  SUSR_Task2
 SUSR_Task2
         smTraceL STRC_TSK_BEG_2
-        banksel PORTB
         movlw   0x02
         xorwf   PORTB, F                ; Toggle LED 2.
         call    ULCD_RefreshLine1       ; Update LCD data buffer with scrolling message.
@@ -127,7 +126,6 @@ SUSR_Task2
         GLOBAL  SUSR_Task3
 SUSR_Task3
         smTraceL STRC_TSK_BEG_3
-        banksel PORTB
         movlw   0x04
         xorwf   PORTB, F                ; Toggle LED 3.
         call    UI2C_MsgTC74			; Use I2C to get raw temperature from TC74.
@@ -171,11 +169,11 @@ SUSR_TaskI2C
 ;
 ; User interface to TaskSIO.
 ;
-        GLOBAL  SUSR_TaskSIO
-SUSR_TaskSIO
-;        smTraceL STRC_TSK_BEG_SIO
-;        call    USIO_MsgReceived        ; Process data from SIO message.
-;        smTraceL STRC_TSK_END_SIO
+        GLOBAL  SUSR_TaskSIO_MsgRcvd
+SUSR_TaskSIO_MsgRcvd
+        smTraceL STRC_TSK_BEG_SIO_RX
+        call    USIO_MsgReceived        ; Process SIO received msg.
+        smTraceL STRC_TSK_END_SIO_RX
         return
 ;
 ; User handling when I2C message completed.

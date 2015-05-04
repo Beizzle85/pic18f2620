@@ -21,10 +21,13 @@
 ; Revision history:
 ;  31Oct03  SHiggins@tinyRTX.com  Created from scratch.
 ;  29Jul14  SHiggins@tinyRTX.com  Moved UAPP_Timer1Init to MACRO to save stack.
+;  29Apr15  Stephen_Higgins@KairosAutonomi.com
+;               Added UAPP_POR_Init_PhaseA.
 ;
 ;*********************************************************************************************
         NOLIST
 ;
+        EXTERN      UAPP_POR_Init_PhaseA
         EXTERN      UAPP_POR_Init
 ;
 ;*******************************************************************************

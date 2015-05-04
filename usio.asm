@@ -170,15 +170,19 @@ USIO_TxLCDMsgToSIO_NextByte
         GLOBAL  USIO_MsgReceived
 USIO_MsgReceived
 ;
-        call    SSIO_GetByteRxBuffer    ;get data from receive buffer
+        call    SSIO_GetByteRxBuffer    ; Get data from receive buffer.
         banksel USIO_TempData
-        movwf   USIO_TempData           ;save data
+        movwf   USIO_TempData           ; Save data to test if it is <CR>.
 ;
-        call    SSIO_PutByteTxBuffer    ;put data in transmit buffer
+        call    SSIO_PutByteTxBuffer    ; Copy data into transmit buffer.
         banksel USIO_TempData
-        movf    USIO_TempData, W        ;restore data
+        movf    USIO_TempData, W        ; Retrieve data.
 ;
-        xorlw   0x0d                    ;compare with <CR> 
-        bnz     USIO_MsgReceived        ;if not the same then move another byte
+        xorlw   0x0d                    ; Compare with <CR>. 
+        bnz     USIO_MsgReceived        ; If data not <CR> then move another byte.
+;
+        movlw   0x0a
+        call    SSIO_PutByteTxBuffer    ; Move <LF> to dest SIO Tx buffer.
+;
         return
         end
