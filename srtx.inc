@@ -31,9 +31,9 @@
         EXTERN      SRTX_Sched_Cnt_TaskI2C
         EXTERN      SRTX_Sched_Cnt_TaskSIO
 ;
-        EXTERN	    SRTX_Init
-        EXTERN	    SRTX_Scheduler
-        EXTERN	    SRTX_ComputedBraRCall
-        EXTERN	    SRTX_ComputedGotoCall
+        EXTERN      SRTX_Init
+        EXTERN      SRTX_Scheduler
+        EXTERN      SRTX_ComputedBraRCall
+        EXTERN      SRTX_ComputedGotoCall
 ;
         LIST

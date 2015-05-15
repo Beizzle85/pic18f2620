@@ -22,7 +22,7 @@
 ;   27Jan04  SHiggins@tinyRTX.com  Created from scratch.
 ;
 ;*******************************************************************************
-		NOLIST
+        NOLIST
 ;
         EXTERN      UADC_Init
         EXTERN      UADC_Trigger

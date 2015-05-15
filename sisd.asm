@@ -19,27 +19,30 @@
 ; copying.txt) along with tinyRTX.  If not, see <http://www.gnu.org/licenses/>.
 ;
 ; Revision history:
-;   17Oct03 SHiggins@tinyRTX.com 	Created from scratch.
-;   23Jul14 SHiggins@tinyRTX.com 	Move save/restore FSR from SISD_Director to 
-;									to SISD_Interrupt
+;   17Oct03 SHiggins@tinyRTX.com    Created from scratch.
+;   23Jul14 SHiggins@tinyRTX.com    Move save/restore FSR from SISD_Director to 
+;                                   to SISD_Interrupt
 ;   14Aug14 SHiggins@tinyRTX.com    Converted from PIC16877 to PIC18F452.
 ;   02Sep14 SHiggins@tinyRTX.com    Save/restore BSR.
-;   								Remove AD_COMPLETE_TASK and I2C_COMPLETE_TASK options.
-;									Both now have some interrupt handling and a task.
-;	03Sep14 SHiggins@tinyRTX.com    SISD_Director_CheckI2C now calls SUSR_ISR_I2C.
+;                                   Remove AD_COMPLETE_TASK and I2C_COMPLETE_TASK options.
+;                                   Both now have some interrupt handling and a task.
+;   03Sep14 SHiggins@tinyRTX.com    SISD_Director_CheckI2C now calls SUSR_ISR_I2C.
 ;   16Apr15 Stephen_Higgins@KairosAutonomi.com  
-;                                   Added SIO interrupt handling.
-;                                   Dispense with saving W, STATUS, BSR registers.
+;               Added SIO interrupt handling.
+;               Dispense with saving W, STATUS, BSR registers.
+;   14May15 Stephen_Higgins@KairosAutonomi.com  
+;               Substitute #include <ucfg.inc> for <p18f452.inc>.
 ;
 ;*******************************************************************************
 ;
-        errorlevel -302	
-	    #include    <p18f2620.inc>
-	    #include    <srtx.inc>
-	    #include    <srtxuser.inc>
-        #include 	<strc.inc>
-	    #include    <susr.inc>
-	    #include    <ssio.inc>
+        errorlevel -302 
+;
+        #include    <ucfg.inc>  ; Configure board and proc, #include <proc.inc>
+        #include    <srtx.inc>
+        #include    <srtxuser.inc>
+        #include    <strc.inc>
+        #include    <susr.inc>
+        #include    <ssio.inc>
 ;
 ;*******************************************************************************
 ;
@@ -48,15 +51,16 @@
 ; Interrupt Service Routine context save/restore variables.
 ;
 ; LINKNOTE: SISD_UdataShrSec must be placed in data space shared across all banks.
-;			This is because to save/restore STATUS register properly, we can't control
-;			RP1 and RP0 bits.  So any values in RP1 and RP0 must be valid.  In order to
-;			allow this we need memory which accesses the same across all banks.
+;           This is because to save/restore STATUS register properly, we can't control
+;           RP1 and RP0 bits.  So any values in RP1 and RP0 must be valid.  In order to
+;           allow this we need memory which accesses the same across all banks.
 ;
 SISD_UdataShrSec    UDATA_ACS
 ;
-SISD_TempW          res     1   ; Access Bank; temp copy of W.
-SISD_TempSTATUS     res     1   ; Access Bank; temp copy of STATUS.
-SISD_TempBSR		res     1   ; Access Bank; temp copy of BSR.
+;;;SISD_TempW          res     1   ; Access Bank; temp copy of W.
+;;;SISD_TempSTATUS     res     1   ; Access Bank; temp copy of STATUS.
+;;;SISD_TempBSR        res     1   ; Access Bank; temp copy of BSR.
+;
 SISD_TempPCLATH     res     1   ; Access Bank; temp copy of PCLATH.
 SISD_TempPCLATU     res     1   ; Access Bank; temp copy of PCLATU.
 SISD_TempFSR0H      res     1   ; Access Bank; temp copy of FSR.
@@ -64,16 +68,16 @@ SISD_TempFSR0L      res     1   ; Access Bank; temp copy of FSR.
 ;
 ;*******************************************************************************
 ;
-SISD_ResetVectorSec	CODE            ; Reset vector address.
+SISD_ResetVectorSec CODE            ; Reset vector address.
 SISD_ResetEntry
         goto    SRTX_Init           ; Initialize SRTX and then application.
 ;
 SISD_IntVectorSec   CODE            ; Interrupt vector address.
 SISD_InterruptEntry
-		goto	SISD_Interrupt		; Handle interrupt.
-									; This is small because if we ever decide to
-									; use prioritized interrupts, that handler
-									; is placed immediately after this one.
+        goto    SISD_Interrupt      ; Handle interrupt.
+                                    ; This is small because if we ever decide to
+                                    ; use prioritized interrupts, that handler
+                                    ; is placed immediately after this one.
 ;
 SISD_IntCodeSec     CODE            ; Interrupt handler, too big to fit at vector address.
 SISD_Interrupt
@@ -82,16 +86,16 @@ SISD_Interrupt
 ;;;     high-priority interrupts or non-prioritized interrupts automatically save
 ;;;     W, STATUS, and BSR.  There's only one level of execution that can be saved.
 ;;;
-;;;     movwf   SISD_TempW          	; Access RAM; preserve W without changing STATUS.
-;;;	    movff	BSR, SISD_TempBSR		; Access RAM; preserve BSR.
-;;;     movff	STATUS, SISD_TempSTATUS	; Access RAM; preserve STATUS.
+;;;     movwf   SISD_TempW              ; Access RAM; preserve W without changing STATUS.
+;;;     movff   BSR, SISD_TempBSR       ; Access RAM; preserve BSR.
+;;;     movff   STATUS, SISD_TempSTATUS ; Access RAM; preserve STATUS.
 ;
 ;   These registers may be used in the ISR's, if possible move these saves to any ISR that may need it.
 ;
-		movff	PCLATH, SISD_TempPCLATH	; Access RAM; preserve PCLATH.
-		movff	PCLATU, SISD_TempPCLATU	; Access RAM; preserve PCLATU.
-		movff	FSR0L, SISD_TempFSR0L	; Access RAM; preserve FSR0L.
-		movff	FSR0H, SISD_TempFSR0H	; Access RAM; preserve FSR0H.
+        movff   PCLATH, SISD_TempPCLATH ; Access RAM; preserve PCLATH.
+        movff   PCLATU, SISD_TempPCLATU ; Access RAM; preserve PCLATU.
+        movff   FSR0L, SISD_TempFSR0L   ; Access RAM; preserve FSR0L.
+        movff   FSR0H, SISD_TempFSR0H   ; Access RAM; preserve FSR0H.
 ;
 ; Now we can use the internal registers (W, STATUS, PCLATH and FSR).
 ; GOTO is used here to save stack space, and SISD_Director never called elsewhere.
@@ -104,10 +108,10 @@ SISD_InterruptExit
 ;
 ;   These registers may be used in the ISR's, if possible move these saves to any ISR that may need it.
 ;
-		movff	SISD_TempFSR0H, FSR0H 	; Access RAM; restore FSR0H.
-		movff	SISD_TempFSR0L, FSR0L 	; Access RAM; restore FSR0L.
-		movff	SISD_TempPCLATU, PCLATU	; Access RAM; restore PCLATU.
-		movff	SISD_TempPCLATH, PCLATH	; Access RAM; restore PCLATH.
+        movff   SISD_TempFSR0H, FSR0H   ; Access RAM; restore FSR0H.
+        movff   SISD_TempFSR0L, FSR0L   ; Access RAM; restore FSR0L.
+        movff   SISD_TempPCLATU, PCLATU ; Access RAM; restore PCLATU.
+        movff   SISD_TempPCLATH, PCLATH ; Access RAM; restore PCLATH.
 ;;;
 ;;; Now we restore the internal registers (W, STATUS, PCLATH and FSR), taking special care not to disturb
 ;;; any of them.
@@ -116,17 +120,17 @@ SISD_InterruptExit
 ;;;     high-priority interrupts or non-prioritized interrupts automatically save
 ;;;     W, STATUS, and BSR.  There's only one level of context that can be saved.
 ;;;
-;;;		movff	SISD_TempBSR, BSR		; Access RAM; restore BSR.
+;;;     movff   SISD_TempBSR, BSR       ; Access RAM; restore BSR.
 ;;;     movf    SISD_TempW, W           ; Access RAM; restore W.
-;;;		movff	SISD_TempSTATUS, STATUS	; Access RAM; restore STATUS.
+;;;     movff   SISD_TempSTATUS, STATUS ; Access RAM; restore STATUS.
 ;
-       	retfie  FAST                   	; Return from interrupt exception.
-                                        ;  Restores single level of BSR, W, and STATUS,
+        retfie  FAST                    ; Return from interrupt exception.
+                                        ; Restores single level of BSR, W, and STATUS,
                                         ; perform Return plus enables GIE.
 ;
 ;*******************************************************************************
 ;
-SISD_CodeSec	CODE
+SISD_CodeSec    CODE
 ;
 ;*******************************************************************************
 ;
@@ -153,7 +157,7 @@ SISD_Director
 ;
         btfss   PIR1, RCIF                  ; Skip if RCIF (receive int) flag set.
         bra     SISD_Director_CheckSIO_Tx   ; RCIF int flag not set, check other ints.
-        btfss	PIE1,RCIE                   ; Skip if RCIE (receive int) enabled.
+        btfss   PIE1,RCIE                   ; Skip if RCIE (receive int) enabled.
         bra     SISD_Director_CheckSIO_Tx   ; RCIF int flag not set, check other ints.
         call    SSIO_GetByteFromRxHW        ; RCIF and RCIE both set, System ISR handling when SIO_Rx event.
         bra     SISD_Director_Exit          ; Only execute single interrupt handler.
@@ -163,9 +167,9 @@ SISD_Director
 SISD_Director_CheckSIO_Tx
         btfss   PIR1, TXIF                  ; Skip if TXIF (transmit int) flag set.
         bra     SISD_Director_CheckI2C      ; TXIF int flag not set, check other ints.
-		btfss	PIE1, TXIE	                ; Skip if TXIE clear (transmit int) enabled.
+        btfss   PIE1, TXIE                  ; Skip if TXIE clear (transmit int) enabled.
         bra     SISD_Director_CheckI2C      ; TXIF int flag not set, check other ints.
-		call	SSIO_PutByteIntoTxHW        ; TXIF and TXIE both set, System ISR handling when SIO_Tx event.
+        call    SSIO_PutByteIntoTxHW        ; TXIF and TXIE both set, System ISR handling when SIO_Tx event.
         bra     SISD_Director_Exit          ; Only execute single interrupt handler.
 ;
 ; Test for completion of I2C event.
@@ -193,7 +197,6 @@ SISD_Director_CheckADC
         btfss   PIR1, ADIF                  ; Skip if A/D interrupt flag set.
         bra     SISD_Unknown_Int            ; A/D int flag not set, check other ints.
         bcf     PIR1, ADIF                  ; Clear A/D interrupt flag.
-        banksel PIE1
         bcf     PIE1, ADIE                  ; Disable A/D interrupts.
         banksel SRTX_Sched_Cnt_TaskADC
         incfsz  SRTX_Sched_Cnt_TaskADC, F   ; Increment task schedule count.

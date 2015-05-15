@@ -48,8 +48,9 @@
 ;
 ;*******************************************************************************
 ;
-        errorlevel +302 
-        #include    <p18f2620.inc>
+        errorlevel -302 
+;
+        #include    <ucfg.inc>  ; Configure board and proc, #include <proc.inc>
         #include    <srtx.inc>
 ;       #include    <si2cuser.inc>
         #include    <susr.inc>

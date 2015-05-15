@@ -31,8 +31,8 @@
 ;*********************************************************************************************
         NOLIST
 ;
-        EXTERN	    STRC_Init
-        EXTERN	    STRC_Trace
+        EXTERN      STRC_Init
+        EXTERN      STRC_Trace
 ;
 STRC_TSK_BEG_1      EQU     0x11
 STRC_TSK_END_1      EQU     0x12
@@ -53,15 +53,15 @@ STRC_ISR_END_I2C    EQU     0x92    ; Calls to smTrace during ints currently not
 ;
 ; smTraceL: System Macro Trace with Literal: add entry to Trace buffer if enabled.
 ;
-smTraceL	MACRO   smTraceArg
-        	movlw   smTraceArg
-        	call    STRC_Trace
-        	ENDM
+smTraceL    MACRO   smTraceArg
+            movlw   smTraceArg
+            call    STRC_Trace
+            ENDM
 ;
 ; smTraceW: System Macro Trace with W: add entry to Trace buffer if enabled.
 ;
-smTraceW	MACRO
-        	call    STRC_Trace
-        	ENDM
+smTraceW    MACRO
+            call    STRC_Trace
+            ENDM
 ;
         LIST

@@ -27,15 +27,26 @@
 ;*******************************************************************************
 ;
         errorlevel -302 
-        #include    <p18f2620.inc>
+;
+        #include    <ucfg.inc>  ; Configure board and proc, #include <proc.inc>
         #include    <srtx.inc>
         #include    <ssio.inc>
         #include    <slcd.inc>
+        #include    <slcduser.inc>
 ;
 ;*******************************************************************************
 ;
 ; User SIO defines.
 ;
+    IF UCFG_BOARD==UCFG_PD2P_2002 || UCFG_BOARD==UCFG_PD2P_2010
+;
+;   UCFG_PD2P_2002 or UCFG_PD2P_2010 specified.
+;   *******************************************
+;
+;       UCFG_18F2620 specified.
+;       ***********************
+;
+        IF UCFG_PROC==UCFG_18F2620
 #define USIO_SPBRGH_VAL .0
 #define USIO_SPBRG_VAL  .8
 ;
@@ -45,6 +56,39 @@
 ;   USIO_SPBRG_VAL  .51     =  19.2K
 ;   USIO_SPBRG_VAL  .16     =  57.6K
 ;   USIO_SPBRG_VAL  .8      = 115.2K
+;
+        ENDIF
+;
+;       UCFG_18F452 specified.
+;       **********************
+;
+        IF UCFG_PROC==UCFG_18F452
+#define USIO_SPBRG_VAL  .12
+;
+; Baud rate for 4Mhz clock, BRGH = 1
+;
+;   USIO_SPBRG_VAL  .25     =   9.6K
+;   USIO_SPBRG_VAL  .12     =  19.2K
+;
+        ENDIF
+    ENDIF
+;
+    IF UCFG_BOARD==UCFG_DJPCB_280B
+;
+;   UCFG_DJPCB_280B specified.
+;   **************************
+;
+#define USIO_SPBRGH_VAL .0
+#define USIO_SPBRG_VAL  .86
+;
+; Baud rate for 40 Mhz clock, BRGH = 1, BRG16 = 1
+;
+;   SPBRG  .1040    =   9.6K    
+;   SPBRG  .520     =  19.2K
+;   SPBRG  .172     =  57.6K
+;   SPBRG  .86      = 115.2K    (USIO_SPBRGH_VAL = 0, USIO_SPBRG_VAL = 86)
+;
+    ENDIF
 ;
 #define USIO_TXSTA_VAL  0x24
 ;
@@ -102,10 +146,13 @@ USIO_Init
         bsf     TRISC, TRISC7       ; Enable USART control of RC pin.
         bsf     TRISC, TRISC6       ; Enable USART control of TX pin.
 ;
+    IF UCFG_PROC==UCFG_18F2620
         movlw   USIO_BAUDCON_VAL    ; Set baud rate.
         movwf   BAUDCON
         movlw   USIO_SPBRGH_VAL     ; Set baud rate.
         movwf   SPBRGH
+    ENDif
+;
         movlw   USIO_SPBRG_VAL      ; Set baud rate.
         movwf   SPBRG
 ;

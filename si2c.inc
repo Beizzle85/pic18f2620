@@ -20,16 +20,19 @@
 ;
 ; Revision history:
 ;   11Nov03  SHiggins@tinyRTX.com  Created from scratch.
-;	14Apr15  Stephen_Higgins@KairosAutonomi.com	Added I2C_* as they are not in p18f2620.cin
+;   14Apr15  Stephen_Higgins@KairosAutonomi.com
+;               Added I2C_* as they are not in p18f2620.cin
+;   14May15 Stephen_Higgins@KairosAutonomi.com  
+;               Substitute #include <ucfg.inc> for <p18f452.inc>.
 ;
 ;*******************************************************************************
         NOLIST
 ;
 ; SI2C routines.
 ;
-		EXTERN  SI2C_Tbl_HwState
-		EXTERN  SI2C_Msg_Write
-		EXTERN  SI2C_Msg_Wrt_Rd
+        EXTERN  SI2C_Tbl_HwState
+        EXTERN  SI2C_Msg_Write
+        EXTERN  SI2C_Msg_Wrt_Rd
 ;
 ; SI2C data structures.
 ;

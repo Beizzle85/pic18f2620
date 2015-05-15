@@ -57,6 +57,7 @@ file_029=.
 file_030=.
 file_031=.
 file_032=.
+file_033=.
 [GENERATED_FILES]
 file_000=no
 file_001=no
@@ -91,6 +92,7 @@ file_029=no
 file_030=no
 file_031=no
 file_032=no
+file_033=no
 [OTHER_FILES]
 file_000=no
 file_001=no
@@ -123,8 +125,9 @@ file_027=no
 file_028=no
 file_029=no
 file_030=no
-file_031=yes
+file_031=no
 file_032=yes
+file_033=yes
 [FILE_INFO]
 file_000=si2c.asm
 file_001=sisd.asm
@@ -156,9 +159,10 @@ file_026=ulcd.inc
 file_027=usio.inc
 file_028=ssio.inc
 file_029=slcd.inc
-file_030=tinyRTX-PIC18F2620.lkr
-file_031=copying.txt
-file_032=copying.lesser.txt
+file_030=ucfg.inc
+file_031=tinyRTX-PIC18F2620.lkr
+file_032=copying.txt
+file_033=copying.lesser.txt
 [SUITE_INFO]
 suite_guid={6B3DAA78-59C1-46DD-B6AA-DBDAE4E06484}
 suite_state=

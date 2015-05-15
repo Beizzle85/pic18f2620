@@ -35,7 +35,7 @@
         EXTERN      SUSR_TaskADC
         EXTERN      SUSR_ISR_I2C
         EXTERN      SUSR_TaskI2C
-        EXTERN      SUSR_TaskSIO_MsgRcvd
         EXTERN      SUSR_TaskI2C_MsgDone
+        EXTERN      SUSR_TaskSIO_MsgRcvd
 ;
         LIST
