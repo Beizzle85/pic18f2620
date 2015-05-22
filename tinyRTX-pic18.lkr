@@ -1,7 +1,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // tinyRTX Filename: tinyRTX-PIC18.lkr (tinyRTX PIC18Fxxxx linker file)
 //
-//  Supports PIC18F452, PIC18F2620.
+//  To support a specific processor, add string specified below to
+//      Project/Build Options.../Project/MPLINK Linker/Use Alternate Settings
+//  Supports PIC18F452:     "/u__18F452 "  (don't add the quotes)
+//  Supports PIC18F2620:    "/u__18F2620 " (don't add the quotes)
 //  Supports pure ASM and ASM/C.
 //
 // Copyright 2014 Sycamore Software, Inc.  ** www.tinyRTX.com **
